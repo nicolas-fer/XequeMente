@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "*",
+        "files": [
+          "src/App.css"
+        ],
+        "createdAt": "2026-11-19T21:56:41.875Z",
+        "reason": "Claude: bordas inferiores são o relevo 3D dos botões de jogo definido no design system e na direção A escolhida pelo usuário; abas têm raio 0; o resto é o triângulo CSS da ponta do balão"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/App.css"
+        ],
+        "createdAt": "2026-11-19T21:56:41.954Z",
+        "reason": "Claude: a borda lateral é o triângulo CSS da ponta do balão de fala e o marcador do item ativo do menu lateral (raio 0) da direção A escolhida pelo usuário, não um cartão com borda de destaque"
+      }
+    ]
+  }
+}
