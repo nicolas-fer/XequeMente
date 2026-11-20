@@ -3,8 +3,8 @@ import { Chess } from "chess.js";
 import { Flag, Handshake, RotateCcw, Swords, Volume2, VolumeX } from "lucide-react";
 import { api, errorText, nextSearchId, type Settings } from "../lib/api";
 import { CLASS_INFO, START_FEN, capturedInfo, fullmoveOf, makeMove, uciToMove, type MoveClass, type MoveNode } from "../lib/chess-utils";
-import { TIME_CONTROLS, botFor, formatClock, thinkTimeMs, type Bot, type TimeControl } from "../lib/bots";
-import { sfx, setSoundEnabled, soundEnabled } from "../lib/sound";
+import { PERSONAS, TIME_CONTROLS, botFor, formatClock, thinkTimeMs, type Bot, type TimeControl } from "../lib/bots";
+import { playMoveSound, sfx, setSoundEnabled, soundEnabled } from "../lib/sound";
 import { evaluateGame, reviewLimitOf, summarizeFor, type PlayerSummary } from "../lib/review";
 import {
   GAME_REPORT_SCHEMA,
@@ -98,8 +98,8 @@ function canMate(fen: string, color: "w" | "b"): boolean {
 
 function BotAvatar({ bot, size = 44 }: { bot: Bot; size?: number }) {
   return (
-    <div className="bot-avatar" style={{ width: size, height: size, background: bot.color, fontSize: size * 0.42 }}>
-      {bot.name === "Stockfish" ? "♞" : bot.name.replace(/^(Dona|Prof\.|Mestre|GM)\s+/, "")[0]}
+    <div className="bot-avatar" style={{ width: size, height: size, background: bot.color }}>
+      <img src={bot.avatar} alt={bot.name} draggable={false} />
     </div>
   );
 }
@@ -294,9 +294,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       game.moves = [...game.moves, m];
       game.clockBefore = [...game.clockBefore, before];
       game.spent = [...game.spent, spent];
-      if (m.san.includes("+") || m.san.includes("#")) sfx.check();
-      else if (m.san.includes("x")) sfx.capture();
-      else sfx.move();
+      playMoveSound(m.san);
       rerender();
       const end = gameOutcome(game.startFen, game.moves);
       if (end) void finish(end);
@@ -521,7 +519,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       <div className="play-setup">
         <section className="panel setup-bot">
           <div className="setup-bot-head">
-            <BotAvatar bot={bot} size={88} />
+            <BotAvatar bot={bot} size={112} />
             <div>
               <div className="bot-name">{bot.name}</div>
               <div className="bot-title">
@@ -529,6 +527,22 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
               </div>
               <div className="bot-level">Nível {level} de 20</div>
             </div>
+          </div>
+          <div className="persona-strip">
+            {PERSONAS.map((p) => {
+              const active = level >= p.min && level <= p.max;
+              return (
+                <button
+                  key={p.name}
+                  className={`persona ${active ? "active" : ""}`}
+                  title={`${p.name} · ${p.title} (níveis ${p.min === p.max ? p.min : `${p.min}–${p.max}`})`}
+                  onClick={() => setLevel(active ? level : p.min)}
+                  style={{ background: p.color }}
+                >
+                  <img src={p.avatar} alt={p.name} draggable={false} />
+                </button>
+              );
+            })}
           </div>
           <input type="range" min={0} max={20} value={level} onChange={(e) => setLevel(Number(e.target.value))} />
           <div className="level-scale">
@@ -660,8 +674,8 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
             className="btn-2 icon-btn"
             title={sound ? "Desligar sons" : "Ligar sons"}
             onClick={() => {
-              setSoundEnabled(!sound);
-              setSound(!sound);
+              setSoundEnabled(!soundEnabled());
+              setSound(soundEnabled());
             }}
           >
             {sound ? <Volume2 size={18} /> : <VolumeX size={18} />}

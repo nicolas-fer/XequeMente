@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
+import { preloadSounds } from "./lib/sound";
 import { Download, LayoutGrid, Search, Settings as SettingsIcon, Swords, UserRound, type LucideIcon } from "lucide-react";
 import { api, errorText, type EngineInfo, type Settings } from "./lib/api";
 import { useGame } from "./lib/useGame";
@@ -36,6 +38,14 @@ export default function App() {
   const [engineGen, setEngineGen] = useState(0);
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [version, setVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    getVersion()
+      .then(setVersion)
+      .catch(() => {});
+    void preloadSounds();
+  }, []);
 
   /** Atualiza o perfil e grava em disco. */
   const updateProfile = useCallback((fn: (p: ProfileData) => ProfileData) => {
@@ -116,6 +126,7 @@ export default function App() {
           <button className="status-line" onClick={() => setTab("config")}>
             <span className={aiConfigured ? "dot on" : "dot"} /> {aiConfigured ? aiName : `${aiName} sem chave`}
           </button>
+          {version && <div className="app-version">XequeMente v{version}</div>}
         </div>
       </aside>
       <main className="stage">

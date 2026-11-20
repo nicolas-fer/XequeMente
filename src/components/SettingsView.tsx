@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Cpu, Download, MemoryStick, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
+import { Cpu, Download, MemoryStick, Play, RefreshCw, RotateCcw, Trash2, Volume2 } from "lucide-react";
+import { SOUND_LIST, previewSound, setSoundEnabled, setSoundVolume, soundEnabled, soundVolume } from "../lib/sound";
 import { MANAGED_OPTIONS, api, errorText, type EngineInfo, type ModelOption, type Settings, type SystemInfo, type UciOption } from "../lib/api";
 
 interface Props {
@@ -166,6 +167,8 @@ export function SettingsView({ settings, engine, engineError, onSaved, onRestart
   const [showKeys, setShowKeys] = useState(false);
   const [sys, setSys] = useState<SystemInfo | null>(null);
   const [filter, setFilter] = useState("");
+  const [soundOn, setSoundOn] = useState(soundEnabled());
+  const [volume, setVolume] = useState(soundVolume());
 
   useEffect(() => setForm(settings), [settings]);
   useEffect(() => {
@@ -314,6 +317,49 @@ export function SettingsView({ settings, engine, engineError, onSaved, onRestart
           </label>
         </div>
         <p className="small muted">As chaves ficam só neste computador e as chamadas às APIs saem do processo nativo do app.</p>
+      </section>
+
+      <section className="panel">
+        <div className="panel-title">
+          <Volume2 size={18} /> Sons
+          <span className="spacer" />
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={soundOn}
+              onChange={(e) => {
+                setSoundEnabled(e.target.checked);
+                setSoundOn(e.target.checked);
+              }}
+            />
+            <span className="switch-track" />
+          </label>
+        </div>
+        <div className="field">
+          <span>
+            Volume: <strong className="value">{Math.round(volume * 100)}%</strong>
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(volume * 100)}
+            onChange={(e) => {
+              const v = Number(e.target.value) / 100;
+              setVolume(v);
+              setSoundVolume(v);
+            }}
+            onMouseUp={() => previewSound("move")}
+          />
+        </div>
+        <div className="sound-grid">
+          {SOUND_LIST.map((s) => (
+            <button key={s.name} className="btn-2 labeled" onClick={() => previewSound(s.name)} title="Ouvir">
+              <Play size={14} strokeWidth={2.6} /> {s.label}
+            </button>
+          ))}
+        </div>
+        <span className="hint">Valem para o modo Jogar e para os lances feitos na Análise. Os botões tocam mesmo com os sons desligados.</span>
       </section>
 
       <section className="panel">

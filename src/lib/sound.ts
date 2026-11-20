@@ -1,7 +1,68 @@
-/** Sons sintetizados com Web Audio (sem arquivos): lance, captura, xeque, fim de jogo, relógio. */
+/** Efeitos sonoros (gravados com o ElevenLabs), tocados via Web Audio com baixa latência. */
+import moveUrl from "../assets/sfx/move.mp3";
+import captureUrl from "../assets/sfx/capture.mp3";
+import castleUrl from "../assets/sfx/castle.mp3";
+import checkUrl from "../assets/sfx/check.mp3";
+import promoteUrl from "../assets/sfx/promote.mp3";
+import premoveUrl from "../assets/sfx/premove.mp3";
+import startUrl from "../assets/sfx/start.mp3";
+import winUrl from "../assets/sfx/win.mp3";
+import lossUrl from "../assets/sfx/loss.mp3";
+import drawUrl from "../assets/sfx/draw.mp3";
+import tickUrl from "../assets/sfx/tick.mp3";
 
-let ctx: AudioContext | null = null;
+const URLS = {
+  move: moveUrl,
+  capture: captureUrl,
+  castle: castleUrl,
+  check: checkUrl,
+  promote: promoteUrl,
+  premove: premoveUrl,
+  start: startUrl,
+  win: winUrl,
+  loss: lossUrl,
+  draw: drawUrl,
+  tick: tickUrl,
+};
+export type SoundName = keyof typeof URLS;
+
+/** Lista para a tela de Configurações (ouvir cada som). */
+export const SOUND_LIST: { name: SoundName; label: string }[] = [
+  { name: "move", label: "Lance" },
+  { name: "capture", label: "Captura" },
+  { name: "castle", label: "Roque" },
+  { name: "check", label: "Xeque" },
+  { name: "promote", label: "Promoção" },
+  { name: "premove", label: "Pré-lance" },
+  { name: "start", label: "Início" },
+  { name: "win", label: "Vitória" },
+  { name: "loss", label: "Derrota" },
+  { name: "draw", label: "Empate" },
+  { name: "tick", label: "Relógio" },
+];
+
 const KEY = "xequemente.sound";
+const VOLUME_KEY = "xequemente.volume";
+
+export function soundVolume(): number {
+  try {
+    const v = parseFloat(localStorage.getItem(VOLUME_KEY) ?? "");
+    return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0.8;
+  } catch {
+    return 0.8;
+  }
+}
+
+export function setSoundVolume(v: number) {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(Math.min(1, Math.max(0, v))));
+  } catch {
+    /* ignora */
+  }
+}
+let ctx: AudioContext | null = null;
+const buffers: Partial<Record<SoundName, AudioBuffer>> = {};
+let loading: Promise<void> | null = null;
 
 export function soundEnabled(): boolean {
   try {
@@ -19,93 +80,72 @@ export function setSoundEnabled(on: boolean) {
   }
 }
 
-function audio(): AudioContext | null {
-  if (!soundEnabled()) return null;
+function context(): AudioContext | null {
   try {
     ctx ??= new AudioContext();
-    if (ctx.state === "suspended") void ctx.resume();
     return ctx;
   } catch {
     return null;
   }
 }
 
-function knock(a: AudioContext, at: number, freq: number, gain: number, dur: number) {
-  // Ruído curto filtrado: o "toc" da peça na madeira.
-  const len = Math.floor(a.sampleRate * dur);
-  const buf = a.createBuffer(1, len, a.sampleRate);
-  const data = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
-  const src = a.createBufferSource();
-  src.buffer = buf;
-  const bp = a.createBiquadFilter();
-  bp.type = "bandpass";
-  bp.frequency.value = freq;
-  bp.Q.value = 1.2;
-  const g = a.createGain();
-  g.gain.value = gain;
-  src.connect(bp).connect(g).connect(a.destination);
-  src.start(at);
-  // Corpo grave
-  const osc = a.createOscillator();
-  const og = a.createGain();
-  osc.frequency.setValueAtTime(freq / 8, at);
-  osc.frequency.exponentialRampToValueAtTime(freq / 16, at + dur);
-  og.gain.setValueAtTime(gain * 0.5, at);
-  og.gain.exponentialRampToValueAtTime(0.001, at + dur);
-  osc.connect(og).connect(a.destination);
-  osc.start(at);
-  osc.stop(at + dur);
+/** Carrega e decodifica todos os sons uma vez (chamado na abertura do app). */
+export function preloadSounds(): Promise<void> {
+  const a = context();
+  if (!a) return Promise.resolve();
+  loading ??= Promise.all(
+    (Object.keys(URLS) as SoundName[]).map(async (name) => {
+      try {
+        const data = await (await fetch(URLS[name])).arrayBuffer();
+        buffers[name] = await a.decodeAudioData(data);
+      } catch {
+        /* som indisponível: segue sem ele */
+      }
+    }),
+  ).then(() => undefined);
+  return loading;
 }
 
-function tone(a: AudioContext, at: number, freq: number, dur: number, gain = 0.12, type: OscillatorType = "sine") {
-  const osc = a.createOscillator();
-  const g = a.createGain();
-  osc.type = type;
-  osc.frequency.value = freq;
-  g.gain.setValueAtTime(0.0001, at);
-  g.gain.exponentialRampToValueAtTime(gain, at + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-  osc.connect(g).connect(a.destination);
-  osc.start(at);
-  osc.stop(at + dur + 0.02);
+function play(name: SoundName, volume = 1, force = false) {
+  if (!soundEnabled() && !force) return;
+  const a = context();
+  if (!a) return;
+  if (a.state === "suspended") void a.resume();
+  const buf = buffers[name];
+  if (!buf) {
+    void preloadSounds();
+    return;
+  }
+  const src = a.createBufferSource();
+  src.buffer = buf;
+  const gain = a.createGain();
+  gain.gain.value = volume * soundVolume();
+  src.connect(gain).connect(a.destination);
+  src.start();
 }
 
 export const sfx = {
-  move() {
-    const a = audio();
-    if (a) knock(a, a.currentTime, 1700, 0.9, 0.07);
-  },
-  capture() {
-    const a = audio();
-    if (!a) return;
-    knock(a, a.currentTime, 1100, 1.1, 0.09);
-    knock(a, a.currentTime + 0.045, 800, 0.7, 0.08);
-  },
-  check() {
-    const a = audio();
-    if (!a) return;
-    knock(a, a.currentTime, 1500, 0.8, 0.07);
-    tone(a, a.currentTime + 0.02, 880, 0.18, 0.09, "triangle");
-  },
-  premove() {
-    const a = audio();
-    if (a) tone(a, a.currentTime, 1250, 0.05, 0.05, "square");
-  },
-  start() {
-    const a = audio();
-    if (!a) return;
-    tone(a, a.currentTime, 523, 0.14);
-    tone(a, a.currentTime + 0.12, 784, 0.22);
-  },
-  end(win: boolean | null) {
-    const a = audio();
-    if (!a) return;
-    const notes = win === null ? [523, 659, 523] : win ? [523, 659, 784, 1047] : [523, 466, 392];
-    notes.forEach((f, i) => tone(a, a.currentTime + i * 0.13, f, 0.3, 0.12, "triangle"));
-  },
-  tick() {
-    const a = audio();
-    if (a) tone(a, a.currentTime, 1900, 0.03, 0.05, "square");
-  },
+  move: () => play("move"),
+  capture: () => play("capture"),
+  castle: () => play("castle"),
+  check: () => play("check"),
+  promote: () => play("promote"),
+  premove: () => play("premove", 0.8),
+  start: () => play("start", 0.8),
+  end: (win: boolean | null) => play(win === null ? "draw" : win ? "win" : "loss", 0.85),
+  tick: () => play("tick", 0.7),
 };
+
+/** Toca um som para teste (mesmo com os sons desligados). */
+export function previewSound(name: SoundName) {
+  void preloadSounds().then(() => play(name, 1, true));
+}
+
+/** Toca o som certo para um lance a partir da notação SAN. */
+export function playMoveSound(san: string) {
+  if (san.includes("+") || san.includes("#")) sfx.check();
+  else if (san.includes("=")) sfx.promote();
+  else if (san.startsWith("O-O")) sfx.castle();
+  else if (san.includes("x")) sfx.capture();
+  else sfx.move();
+}

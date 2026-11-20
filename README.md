@@ -13,6 +13,8 @@ Baixe o instalador na página de [Releases](../../releases/latest):
 
 Requer Windows 10 ou 11 (64 bits) com o WebView2, que já vem no Windows 11.
 
+O que mudou em cada versão está no [CHANGELOG](CHANGELOG.md).
+
 Na primeira execução, vá em **Configurações**:
 
 1. **Motor:** clique em *Baixar Stockfish oficial* (baixa a última versão do GitHub do Stockfish) ou aponte para um `stockfish.exe` seu.

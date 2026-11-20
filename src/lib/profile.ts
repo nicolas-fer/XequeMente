@@ -41,10 +41,21 @@ export interface CoachProfileAnalysis {
   weaknesses: string[];
   frequent_errors: { pattern: string; example: string; fix: string }[];
   training_plan: { title: string; detail: string }[];
-  thinking_tips: string[];
+  /** grupos de dicas ligados a um ponto fraco (para corrigir) ou forte (para aproveitar) */
+  tip_groups?: TipGroup[];
+  /** formato antigo (análises geradas antes dos grupos de dicas) */
+  thinking_tips?: string[];
   memory: string[];
   updatedAt?: string;
   gamesCount?: number;
+}
+
+export interface TipGroup {
+  title: string;
+  kind: "weakness" | "strength";
+  linked_to: string;
+  evidence: string;
+  tips: string[];
 }
 
 export interface ProfileData {
@@ -287,10 +298,24 @@ export const PROFILE_SCHEMA = {
         additionalProperties: false,
       },
     },
-    thinking_tips: { type: "array", items: { type: "string" } },
+    tip_groups: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          kind: { type: "string", enum: ["weakness", "strength"] },
+          linked_to: { type: "string" },
+          evidence: { type: "string" },
+          tips: { type: "array", items: { type: "string" } },
+        },
+        required: ["title", "kind", "linked_to", "evidence", "tips"],
+        additionalProperties: false,
+      },
+    },
     memory: { type: "array", items: { type: "string" } },
   },
-  required: ["level_label", "summary", "strengths", "weaknesses", "frequent_errors", "training_plan", "thinking_tips", "memory"],
+  required: ["level_label", "summary", "strengths", "weaknesses", "frequent_errors", "training_plan", "tip_groups", "memory"],
   additionalProperties: false,
 };
 
@@ -330,7 +355,58 @@ export function profilePrompt(p: ProfileData, s: ProfileStats) {
     "strengths e weaknesses: de 2 a 5 itens cada, concretos e baseados nos dados.",
     "frequent_errors: de 2 a 5 padrões de erro recorrentes, cada um com um exemplo real das partidas (lance) e como corrigir.",
     "training_plan: de 3 a 5 itens de treino priorizados para as próximas semanas (o quê, quanto tempo, como).",
-    "thinking_tips: de 4 a 6 dicas práticas e personalizadas de como pensar mais rápido e calcular melhor durante a partida.",
+    "tip_groups: de 3 a 5 grupos de dicas e macetes práticos para usar DURANTE a partida (rotina antes do lance, como calcular, como pensar mais rápido, uso do relógio, padrões a procurar). Cada grupo é ligado a um item de weaknesses (kind 'weakness', para corrigir) ou de strengths (kind 'strength', para aproveitar ainda mais); pelo menos um grupo deve ser de ponto forte. linked_to repete o ponto fraco ou forte; evidence cita os dados que justificam (contagens, fase, lance de exemplo); title é curto (ex.: 'Antes de soltar a peça'); tips tem de 2 a 4 dicas concretas e acionáveis, escritas para este aluno.",
     MEMORY_RULES,
   ].join("\n");
+}
+
+// ---------------------------------------------------------------- Relevância das dicas gerais
+
+export type TipId = "routine" | "calc" | "speed" | "clock";
+
+export interface TipRelevance {
+  score: number;
+  reason: string;
+}
+
+/** Quanto cada grupo de dicas gerais importa para este jogador, pelos erros medidos. */
+export function tipRelevance(games: GameRecord[]): Record<TipId, TipRelevance> {
+  const recent = games.slice(0, 30);
+  const count = (tag: string) => recent.reduce((n, g) => n + g.mistakes.filter((m) => m.tags.includes(tag)).length, 0);
+  const material = count("deixou material atacado");
+  const allowedMate = count("permitiu mate");
+  const tactic = count("perdeu lance tático");
+  const missedMate = count("perdeu um mate");
+  const pressure = count("apuro de tempo");
+  const flagged = recent.filter((g) => g.result === "loss" && g.reason.startsWith("tempo esgotado")).length;
+  const slowGames = recent.filter((g) => g.avgMoveMs !== null && g.timeControl.base > 0 && g.avgMoveMs > (g.timeControl.base * 1000) / 35).length;
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const join = (parts: string[]) => parts.filter(Boolean).join(" e ");
+  return {
+    routine: {
+      score: material + allowedMate * 1.5,
+      reason: join([
+        material ? `${plural(material, "vez", "vezes")} você deixou material atacado` : "",
+        allowedMate ? `${plural(allowedMate, "vez", "vezes")} permitiu mate` : "",
+      ]),
+    },
+    calc: {
+      score: tactic + missedMate * 1.5,
+      reason: join([
+        tactic ? `${plural(tactic, "lance tático perdido", "lances táticos perdidos")}` : "",
+        missedMate ? `${plural(missedMate, "mate perdido", "mates perdidos")}` : "",
+      ]),
+    },
+    clock: {
+      score: pressure + flagged * 2,
+      reason: join([
+        pressure ? `${plural(pressure, "erro", "erros")} em apuro de tempo` : "",
+        flagged ? `${plural(flagged, "derrota", "derrotas")} no tempo` : "",
+      ]),
+    },
+    speed: {
+      score: slowGames * 1.5 + flagged,
+      reason: slowGames ? `ritmo lento em ${plural(slowGames, "partida", "partidas")}` : "",
+    },
+  };
 }

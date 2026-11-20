@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess, type Square } from "chess.js";
 import { squareOfKingInCheck } from "../lib/chess-utils";
+import { ArrowLayer, legalTargetStyles, mergeSquareStyles, useAnnotations } from "./boardKit";
 
 export interface Premove {
   from: string;
@@ -24,6 +25,9 @@ const GLYPH: Record<string, [string, string]> = { q: ["♕", "♛"], r: ["♖", 
 export function PlayBoard({ fen, playerColor, active, lastMove, premove, onMove, onPremove }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [promo, setPromo] = useState<{ from: string; to: string } | null>(null);
+  const [dragFrom, setDragFrom] = useState<string | null>(null);
+  const orientation = playerColor === "w" ? "white" : "black";
+  const notes = useAnnotations(fen, orientation);
 
   const chess = useMemo(() => {
     try {
@@ -38,10 +42,6 @@ export function PlayBoard({ fen, playerColor, active, lastMove, premove, onMove,
     if (myTurn) setSelected(null);
   }, [fen, myTurn]);
 
-  const targets = useMemo(() => {
-    if (!chess || !selected || !myTurn) return [] as string[];
-    return chess.moves({ square: selected as Square, verbose: true }).map((m) => m.to as string);
-  }, [chess, selected, myTurn]);
 
   const isOwn = (pieceType: string) => pieceType[0] === playerColor;
   const isPawnToLastRank = (from: string, to: string) => {
@@ -76,32 +76,28 @@ export function PlayBoard({ fen, playerColor, active, lastMove, premove, onMove,
     styles[premove.from] = { background: "rgba(214, 79, 64, 0.65)" };
     styles[premove.to] = { background: "rgba(214, 79, 64, 0.8)" };
   }
-  if (selected) styles[selected] = { ...(styles[selected] ?? {}), background: myTurn ? "rgba(255, 255, 51, 0.5)" : "rgba(214, 79, 64, 0.45)" };
-  for (const t of targets) {
-    const occupied = chess?.get(t as Square);
-    styles[t] = {
-      ...(styles[t] ?? {}),
-      backgroundImage: occupied
-        ? "radial-gradient(circle, transparent 58%, rgba(0,0,0,0.16) 60%)"
-        : "radial-gradient(circle, rgba(0,0,0,0.16) 18%, transparent 20%)",
-    };
-  }
+  const source = dragFrom ?? selected;
+  if (source) styles[source] = { ...(styles[source] ?? {}), background: myTurn ? "rgba(255, 255, 51, 0.5)" : "rgba(214, 79, 64, 0.45)" };
+  const squareStyles = mergeSquareStyles(styles, notes.markStyles, myTurn && active ? legalTargetStyles(chess, source) : {});
 
   return (
-    <div className="board-shell" onContextMenu={(e) => e.preventDefault()}>
+    <div className="board-shell" {...notes.handlers}>
       <Chessboard
         options={{
           id: "play-board",
           position: fen,
-          boardOrientation: playerColor === "w" ? "white" : "black",
-          squareStyles: styles,
+          boardOrientation: orientation,
+          squareStyles,
           allowDragging: active,
           allowDrawingArrows: false,
           animationDurationInMs: 160,
           darkSquareStyle: { backgroundColor: "#739552" },
           lightSquareStyle: { backgroundColor: "#ebecd0" },
           canDragPiece: ({ piece }) => active && isOwn(piece.pieceType),
+          onPieceDrag: ({ square }) => setDragFrom(square),
+          onPieceDragCancel: () => setDragFrom(null),
           onPieceDrop: ({ sourceSquare, targetSquare }) => {
+            setDragFrom(null);
             setSelected(null);
             if (!targetSquare) return false;
             return attempt(sourceSquare, targetSquare);
@@ -122,6 +118,7 @@ export function PlayBoard({ fen, playerColor, active, lastMove, premove, onMove,
           },
         }}
       />
+      <ArrowLayer arrows={notes.arrows} orientation={orientation} />
       {promo && (
         <div className="promo-overlay" onClick={() => setPromo(null)}>
           <div className="promo-box" onClick={(e) => e.stopPropagation()}>

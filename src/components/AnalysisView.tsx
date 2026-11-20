@@ -24,6 +24,7 @@ import {
 } from "../lib/chess-utils";
 import { pathMoves, type GameApi } from "../lib/useGame";
 import { useLiveEngine } from "../lib/useEngine";
+import { playMoveSound } from "../lib/sound";
 import { BoardView } from "./BoardView";
 import { EvalBar } from "./EvalBar";
 import { EvalGraph } from "./EvalGraph";
@@ -118,7 +119,14 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
   const shownEval: PositionEval | null = terminalEval(fen) ?? liveEval ?? currentReviewEval;
   const lastReview = onMainline && ply > 0 ? reviews[ply - 1] : null;
 
+  /** lance (UCI) da linha do motor sob o mouse: destacado no tabuleiro */
+  const [hoverMove, setHoverMove] = useState<string | null>(null);
+  useEffect(() => setHoverMove(null), [fen]);
+  const hoverValid = !!hoverMove && live.lines.some((l) => l.pv[0] === hoverMove);
+
   const arrows: Arrow[] = useMemo(() => {
+    if (hoverMove && hoverValid)
+      return [{ startSquare: hoverMove.slice(0, 2), endSquare: hoverMove.slice(2, 4), color: "rgba(72, 148, 222, 0.95)" }];
     const out: Arrow[] = [];
     const best = live.lines[0]?.pv[0] ?? (onMainline ? review.evals[ply]?.best : null);
     if (best && engineOn) out.push({ startSquare: best.slice(0, 2), endSquare: best.slice(2, 4), color: "rgba(129,182,76,0.9)" });
@@ -126,13 +134,14 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
     if (second && engineOn && multipv > 1)
       out.push({ startSquare: second.slice(0, 2), endSquare: second.slice(2, 4), color: "rgba(129,182,76,0.4)" });
     return out;
-  }, [live.lines, review.evals, ply, onMainline, engineOn, multipv]);
+  }, [live.lines, review.evals, ply, onMainline, engineOn, multipv, hoverMove, hoverValid]);
 
   const handleMove = useCallback(
     (from: string, to: string, promotion?: string) => {
       const m = makeMove(fen, from, to, promotion);
       if (!m) return false;
       game.play(m);
+      playMoveSound(m.san);
       return true;
     },
     [fen, game],
@@ -344,6 +353,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
             onMove={handleMove}
             arrows={arrows}
             lastMove={lastMove ? { from: lastMove.from, to: lastMove.to } : null}
+            previewMove={hoverMove && hoverValid ? { from: hoverMove.slice(0, 2), to: hoverMove.slice(2, 4) } : null}
           />
         </div>
         <PlayerBar name={nameOf(bottomColor)} rating={eloOf(bottomColor)} color={bottomColor} fen={fen} toMove={turn === bottomColor} />
@@ -564,11 +574,18 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
                 {live.lines.map((l) => (
                   <button
                     key={l.multipv}
-                    className="pv-line"
+                    className={`pv-line ${hoverMove === l.pv[0] ? "hovered" : ""}`}
                     title="Clique para jogar o primeiro lance desta linha"
+                    onMouseEnter={() => setHoverMove(l.pv[0] ?? null)}
+                    onMouseLeave={() => setHoverMove(null)}
+                    onFocus={() => setHoverMove(l.pv[0] ?? null)}
+                    onBlur={() => setHoverMove(null)}
                     onClick={() => {
                       const m = uciToMove(fen, l.pv[0]);
-                      if (m) game.play(m);
+                      if (m) {
+                        game.play(m);
+                        playMoveSound(m.san);
+                      }
                     }}
                   >
                     <span className={`pv-eval ${(l.mate ?? 0) > 0 || (l.mate === null && (l.cp ?? 0) >= 0) ? "pos" : "neg"}`}>

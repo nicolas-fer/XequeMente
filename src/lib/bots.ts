@@ -1,4 +1,12 @@
 /** Adversários (níveis do Stockfish com cara de jogador), modalidades e tempo de pensamento humano. */
+import tico from "../assets/avatars/tico.webp";
+import bia from "../assets/avatars/bia.webp";
+import rafa from "../assets/avatars/rafa.webp";
+import lucia from "../assets/avatars/lucia.webp";
+import helio from "../assets/avatars/helio.webp";
+import otavio from "../assets/avatars/otavio.webp";
+import sombra from "../assets/avatars/sombra.webp";
+import stockfish from "../assets/avatars/stockfish.webp";
 
 export interface Bot {
   level: number;
@@ -6,17 +14,18 @@ export interface Bot {
   title: string;
   elo: number;
   color: string;
+  avatar: string;
 }
 
-const PERSONAS: { max: number; name: string; title: string; color: string }[] = [
-  { max: 2, name: "Tico", title: "Iniciante", color: "#7fb3d5" },
-  { max: 5, name: "Bia", title: "Aprendiz", color: "#82c99b" },
-  { max: 8, name: "Rafa", title: "Jogador de clube", color: "#e5b55a" },
-  { max: 11, name: "Dona Lúcia", title: "Experiente", color: "#d98c6b" },
-  { max: 14, name: "Prof. Hélio", title: "Avançado", color: "#b48ad6" },
-  { max: 17, name: "Mestre Otávio", title: "Mestre", color: "#d46a6a" },
-  { max: 19, name: "GM Sombra", title: "Grande mestre", color: "#5c5a57" },
-  { max: 20, name: "Stockfish", title: "Força máxima", color: "#81b64c" },
+export const PERSONAS: { min: number; max: number; name: string; title: string; color: string; avatar: string }[] = [
+  { min: 0, max: 2, name: "Tico", title: "Iniciante", color: "#7fb3d5", avatar: tico },
+  { min: 3, max: 5, name: "Bia", title: "Aprendiz", color: "#82c99b", avatar: bia },
+  { min: 6, max: 8, name: "Rafa", title: "Jogador de clube", color: "#e5b55a", avatar: rafa },
+  { min: 9, max: 11, name: "Dona Lúcia", title: "Experiente", color: "#d98c6b", avatar: lucia },
+  { min: 12, max: 14, name: "Prof. Hélio", title: "Avançado", color: "#b48ad6", avatar: helio },
+  { min: 15, max: 17, name: "Mestre Otávio", title: "Mestre", color: "#d46a6a", avatar: otavio },
+  { min: 18, max: 19, name: "GM Sombra", title: "Grande mestre", color: "#5c5a57", avatar: sombra },
+  { min: 20, max: 20, name: "Stockfish", title: "Força máxima", color: "#6a9c3c", avatar: stockfish },
 ];
 
 /**
@@ -30,7 +39,7 @@ export function eloForLevel(level: number): number {
 
 export function botFor(level: number): Bot {
   const p = PERSONAS.find((x) => level <= x.max) ?? PERSONAS[PERSONAS.length - 1];
-  return { level, name: p.name, title: p.title, elo: eloForLevel(level), color: p.color };
+  return { level, name: p.name, title: p.title, elo: eloForLevel(level), color: p.color, avatar: p.avatar };
 }
 
 export interface TimeControl {

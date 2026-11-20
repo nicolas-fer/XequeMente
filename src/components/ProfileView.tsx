@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Brain, Clock3, Crosshair, Lightbulb, Sparkles, Target, Trash2, TrendingUp, Zap } from "lucide-react";
+import { Brain, Clock3, Crosshair, Lightbulb, Sparkles, Target, ThumbsUp, Trash2, TrendingUp, Wrench, Zap } from "lucide-react";
 import { api, errorText, type Settings } from "../lib/api";
 import { makeMove, type MoveNode } from "../lib/chess-utils";
 import { PHASE_LABEL, type Phase } from "../lib/review";
@@ -8,7 +8,9 @@ import {
   coachSystem,
   computeStats,
   profilePrompt,
+  tipRelevance,
   type CoachProfileAnalysis,
+  type TipId,
   type GameRecord,
   type ProfileData,
 } from "../lib/profile";
@@ -22,8 +24,9 @@ interface Props {
 }
 
 /** Dicas gerais de método (valem para qualquer nível). */
-const TIPS: { icon: typeof Zap; title: string; items: string[] }[] = [
+const TIPS: { id: TipId; icon: typeof Zap; title: string; items: string[] }[] = [
   {
+    id: "routine",
     icon: Crosshair,
     title: "Rotina antes de cada lance (10 segundos)",
     items: [
@@ -34,6 +37,7 @@ const TIPS: { icon: typeof Zap; title: string; items: string[] }[] = [
     ],
   },
   {
+    id: "calc",
     icon: Brain,
     title: "Calcular melhor",
     items: [
@@ -45,6 +49,7 @@ const TIPS: { icon: typeof Zap; title: string; items: string[] }[] = [
     ],
   },
   {
+    id: "speed",
     icon: Zap,
     title: "Pensar mais rápido",
     items: [
@@ -55,6 +60,7 @@ const TIPS: { icon: typeof Zap; title: string; items: string[] }[] = [
     ],
   },
   {
+    id: "clock",
     icon: Clock3,
     title: "Relógio e apuro de tempo",
     items: [
@@ -65,6 +71,114 @@ const TIPS: { icon: typeof Zap; title: string; items: string[] }[] = [
     ],
   },
 ];
+
+/** Dicas: personalizadas pela IA quando há análise; senão, as gerais ordenadas pelos erros medidos. */
+function TipsSection({ games, analysis }: { games: GameRecord[]; analysis: CoachProfileAnalysis | null }) {
+  const rel = useMemo(() => tipRelevance(games), [games]);
+  const groups = analysis?.tip_groups ?? [];
+  const legacy = analysis?.thinking_tips ?? [];
+  const hasGames = games.length > 0;
+  const ordered = [...TIPS].sort((a, b) => rel[b.id].score - rel[a.id].score);
+  const top = rel[ordered[0].id].score;
+
+  const general = (
+    <div className="tips-grid">
+      {ordered.map(({ id, icon: Icon, title, items }) => {
+        const r = rel[id];
+        const key = hasGames && r.score > 0 && r.score >= top * 0.6;
+        return (
+          <div key={id} className={`tip-card ${key ? "key" : ""}`}>
+            {key && <span className="tip-badge">Mais importante para você</span>}
+            <div className="tip-title">
+              <Icon size={18} /> {title}
+            </div>
+            {key && r.reason && <div className="tip-evidence">Por quê: {r.reason} nas últimas partidas.</div>}
+            <ul>
+              {items.map((t, i) => (
+                <li key={i}>{t}</li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  if (!hasGames) {
+    return (
+      <section className="panel">
+        <details className="tips-collapsed">
+          <summary>
+            <span className="panel-title">
+              <Lightbulb size={18} /> Dicas e macetes
+            </span>
+            <span className="muted small">Jogue algumas partidas para receber dicas baseadas no seu jogo · ver dicas gerais</span>
+          </summary>
+          {general}
+        </details>
+      </section>
+    );
+  }
+
+  if (groups.length) {
+    return (
+      <section className="panel">
+        <div className="panel-title">
+          <Lightbulb size={18} /> Dicas para você
+        </div>
+        <p className="hint">Escritas pelo treinador a partir dos seus pontos fortes e fracos. Atualizam junto com a análise.</p>
+        <div className="tips-grid">
+          {[...groups]
+            .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "weakness" ? -1 : 1))
+            .map((g, i) => (
+              <div key={i} className={`tip-card personal ${g.kind}`}>
+                <span className={`tip-kind ${g.kind}`}>
+                  {g.kind === "weakness" ? <Wrench size={13} /> : <ThumbsUp size={13} />}
+                  {g.kind === "weakness" ? "Para corrigir" : "Para aproveitar"}
+                </span>
+                <div className="tip-title">{g.title}</div>
+                <div className="tip-linked">{g.linked_to}</div>
+                {g.evidence && <div className="tip-evidence">{g.evidence}</div>}
+                <ul>
+                  {g.tips.map((t, j) => (
+                    <li key={j}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+        </div>
+        <details className="tips-collapsed">
+          <summary>
+            <span className="muted small">Ver dicas gerais (ordenadas pelos seus erros)</span>
+          </summary>
+          {general}
+        </details>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel">
+      <div className="panel-title">
+        <Lightbulb size={18} /> Dicas e macetes
+      </div>
+      <p className="hint">
+        Ordenadas pelos erros das suas partidas. Gere a análise do treinador para receber dicas escritas para os seus pontos fortes e
+        fracos.
+      </p>
+      {legacy.length > 0 && (
+        <ul className="tips-list">
+          {legacy.map((t, i) => (
+            <li key={i}>
+              <Lightbulb size={15} /> {t}
+            </li>
+          ))}
+        </ul>
+      )}
+      {general}
+    </section>
+  );
+}
 
 function pct(v: number | null | undefined) {
   return v === null || v === undefined ? "—" : `${v.toFixed(1)}%`;
@@ -281,21 +395,11 @@ export function ProfileView({ settings, profile, updateProfile, onOpenInAnalysis
                 </li>
               ))}
             </ol>
-            {analysis.thinking_tips.length > 0 && (
-              <>
-                <div className="card-title">Dicas personalizadas para pensar e calcular</div>
-                <ul className="tips-list">
-                  {analysis.thinking_tips.map((t, i) => (
-                    <li key={i}>
-                      <Lightbulb size={15} /> {t}
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
           </>
         )}
       </section>
+
+      <TipsSection games={profile.games} analysis={busy ? null : analysis} />
 
       <div className="profile-grid">
         <section className="panel">
@@ -350,25 +454,6 @@ export function ProfileView({ settings, profile, updateProfile, onOpenInAnalysis
         </section>
       </div>
 
-      <section className="panel">
-        <div className="panel-title">
-          <Lightbulb size={18} /> Dicas e macetes
-        </div>
-        <div className="tips-grid">
-          {TIPS.map(({ icon: Icon, title, items }) => (
-            <div key={title} className="tip-card">
-              <div className="tip-title">
-                <Icon size={18} /> {title}
-              </div>
-              <ul>
-                {items.map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
