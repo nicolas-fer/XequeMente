@@ -31,7 +31,7 @@ function MoveCell({ m, active, review, onClick }: { m: MoveNode; active: boolean
 export function OpeningLine({ track }: { track: OpeningTrack }) {
   if (!track.opening) return null;
   return (
-    <div className={`opening-line ${track.inBook ? "in-book" : ""}`} title={track.inBook ? "Posição teórica (catálogo de aberturas do Lichess)" : "A partida já saiu da teoria"}>
+    <div className={`opening-line ${track.inBook ? "in-book" : ""}`} title={`${track.opening.nameEn}\n${track.inBook ? "Posição teórica (catálogo de aberturas do Lichess)" : "A partida já saiu da teoria"}`}>
       <span className="badge mini book-badge" style={{ background: track.inBook ? "#a88865" : "var(--muted)" }} />
       <span className="opening-eco">{track.opening.eco}</span>
       <span className="opening-name">{track.opening.name}</span>

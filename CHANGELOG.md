@@ -6,6 +6,11 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.5.2] - 2026-11-20
+
+### Alterado
+- **Nomes das aberturas em português**, com a terminologia do xadrez brasileiro: "Defesa Siciliana: Variante Najdorf, Ataque Inglês", "Ruy López: Defesa Berlinense", "Gambito da Dama Recusado: Defesa Ortodoxa". As 149 famílias foram traduzidas à mão; os cerca de 2.100 nomes de variantes, com IA (glossário, regras de gênero e nomes próprios preservados) e revisados. O nome original em inglês aparece ao passar o mouse e também vai para o treinador.
+
 ## [0.5.1] - 2026-11-20
 
 ### Adicionado
@@ -105,7 +110,8 @@ Primeira versão.
 - **Configuração completa do Stockfish**: download do executável oficial, threads, hash, limites da análise ao vivo, critério da revisão e todas as opções UCI anunciadas pelo motor.
 - Instaladores para Windows (NSIS e MSI).
 
-[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.1...HEAD
+[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.2...HEAD
+[0.5.2]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.4.0...v0.4.1

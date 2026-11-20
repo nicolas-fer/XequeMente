@@ -354,7 +354,7 @@ export function HistoryView({ settings, profile, updateProfile, selectedId, onSe
                       {g.botName} <span className="muted">· {g.timeControl.label}</span>
                     </span>
                     {recordOpening(g).opening && (
-                      <span className="muted small" title={openingLabel(recordOpening(g).opening)}>
+                      <span className="muted small" title={`${openingLabel(recordOpening(g).opening)}\n${recordOpening(g).opening!.nameEn}`}>
                         {recordOpening(g).opening!.name}
                       </span>
                     )}
