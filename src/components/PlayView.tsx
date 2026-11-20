@@ -17,9 +17,10 @@ import {
 } from "../lib/profile";
 import { PlayBoard, type Premove } from "./PlayBoard";
 import { OpeningLine } from "./MoveList";
+import { CoachReport } from "./CoachReport";
 import { openingContext, trackOpening } from "../lib/openings";
 import { useBoardFit } from "./boardKit";
-import { CoachBubble, Markdown, TutorChat, linkMoves } from "./TutorChat";
+import { CoachBubble, TutorChat } from "./TutorChat";
 import type { OpenOpts } from "../lib/useGame";
 import { PHASE_LABEL } from "../lib/review";
 
@@ -319,6 +320,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
         avgMoveMs: playerSpent.length ? playerSpent.reduce((a, b) => a + b, 0) / playerSpent.length : null,
         coach: null,
         evals: evals.map(compactEval),
+        accuracyAlgo: "lichess",
         digest: summary.moveDigest,
         chat: [],
       };
@@ -866,41 +868,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
             const c = (post?.coach ?? record?.coach)!;
             return (
               <>
-                <CoachBubble>
-                  <strong>{c.headline}</strong>
-                  <Markdown text={c.report} onMoveClick={openMoveRef} />
-                </CoachBubble>
-                {c.good_moments.length > 0 && (
-                  <div className="moments good">
-                    <div className="card-title">O que você fez bem</div>
-                    {c.good_moments.map((m, i) => (
-                      <div key={i} className="moment">
-                        <span className="badge mini" style={{ background: CLASS_INFO.best.color }}>
-                          ★
-                        </span>
-                        <div>
-                          <strong>{linkMoves(m.move, openMoveRef)}</strong> {m.why}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {c.mistakes.length > 0 && (
-                  <div className="moments bad">
-                    <div className="card-title">Onde errou e a lição</div>
-                    {c.mistakes.map((m, i) => (
-                      <div key={i} className="moment">
-                        <span className="badge mini" style={{ background: CLASS_INFO.blunder.color }}>
-                          ?
-                        </span>
-                        <div>
-                          <strong>{linkMoves(m.move, openMoveRef)}</strong> {m.what_happened}
-                          <div className="lesson">Lição: {m.lesson}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <CoachReport coach={c} onMoveClick={openMoveRef} />
                 <div className="hint">O treinador guardou na memória o que aprendeu sobre você (veja em Perfil).</div>
               </>
             );

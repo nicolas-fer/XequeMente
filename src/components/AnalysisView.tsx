@@ -37,8 +37,9 @@ import { useBoardFit } from "./boardKit";
 import { EvalBar } from "./EvalBar";
 import { EvalGraph } from "./EvalGraph";
 import { MoveList } from "./MoveList";
+import { CoachReport, coachNoteAt } from "./CoachReport";
 import { openingContext, openingLabel, trackOpening } from "../lib/openings";
-import { CoachBubble, TutorChat, type TutorAsk } from "./TutorChat";
+import { CoachBubble, Markdown, TutorChat, type TutorAsk } from "./TutorChat";
 
 interface Props {
   game: GameApi;
@@ -353,6 +354,12 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
   const configured = settings.provider === "gemini" ? !!settings.geminiApiKey : !!settings.claudeApiKey;
   // só vale enquanto a análise mostra a mesma partida (se o aluno carregar outra, desliga)
   const linked = linkedRecord && state.linkedRecordId === linkedRecord.id ? linkedRecord : null;
+  /** comentário do relatório do treinador (partida salva) sobre o lance atual */
+  const coachNote = onMainline ? coachNoteAt(linked?.coach, state.moves, ply) : null;
+  const gotoRef = (n: number, black: boolean, san: string) => {
+    const p = resolveMoveRef(state.moves, n, black, san);
+    if (p !== null) game.goto({ inVar: false, ply: p });
+  };
   const providerLabel = settings.provider === "gemini" ? settings.geminiModel : settings.claudeModel;
   const nameOf = (c: "w" | "b") => {
     const n = c === "w" ? headers.White : headers.Black;
@@ -395,6 +402,13 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
         <span className="bubble-eval">
           {evalText(review.evals[ply - 1])} → {evalText(review.evals[ply])}
         </span>
+        {coachNote && (
+          <div className={`bubble-note ${coachNote.kind}`}>
+            <span className="bubble-note-label">{coachNote.kind === "good" ? "O que eu disse no relatório" : "No relatório eu comentei"}</span>
+            <Markdown text={coachNote.text} onMoveClick={gotoRef} />
+            {coachNote.kind === "mistake" && <div className="lesson">Lição: {coachNote.lesson}</div>}
+          </div>
+        )}
       </>
     );
   } else coachText = "Revisão pronta! Navegue pelos lances com ← → e eu comento cada um.";
@@ -414,6 +428,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
             onMove={handleMove}
             arrows={arrows}
             lastMove={lastMove ? { from: lastMove.from, to: lastMove.to } : null}
+            moveBadge={lastMove && lastReview ? { square: lastMove.to, cls: lastReview.cls } : null}
             previewMove={hoverMove && hoverValid ? { from: hoverMove.slice(0, 2), to: hoverMove.slice(2, 4) } : null}
           />
         </div>
@@ -687,10 +702,15 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
             initialMessages={linked?.chat}
             onMessagesChange={linked ? (chat) => onLinkedChange(linked.id, { chat }) : undefined}
             intro={linked ? `Continuando nossa conversa sobre a partida contra ${linked.botName}. Pergunte sobre esta posição ou qualquer lance.` : undefined}
-            onMoveClick={(n, black, san) => {
-              const p = resolveMoveRef(state.moves, n, black, san);
-              if (p !== null) game.goto({ inVar: false, ply: p });
-            }}
+            onMoveClick={gotoRef}
+            header={
+              linked?.coach ? (
+                <details className="report-details" open>
+                  <summary>Relatório do treinador sobre esta partida</summary>
+                  <CoachReport coach={linked.coach} onMoveClick={gotoRef} />
+                </details>
+              ) : undefined
+            }
           />
         </div>
       </section>

@@ -14,7 +14,7 @@ import { PlayView } from "./components/PlayView";
 import { ProfileView } from "./components/ProfileView";
 import { HistoryView } from "./components/HistoryView";
 import type { OpenOpts } from "./lib/useGame";
-import { EMPTY_PROFILE, loadProfile, saveProfile, type ProfileData } from "./lib/profile";
+import { EMPTY_PROFILE, loadProfile, saveProfile, withCurrentAccuracy, type ProfileData } from "./lib/profile";
 import logo from "./assets/brand/logo.png";
 import "./App.css";
 
@@ -166,7 +166,9 @@ export default function App() {
             engineGen={engineGen}
             memory={profile.memory}
             linkedRecord={profile.games.find((g) => g.id === game.state.linkedRecordId) ?? null}
-            onLinkedChange={(id, patch) => updateProfile((p) => ({ ...p, games: p.games.map((g) => (g.id === id ? { ...g, ...patch } : g)) }))}
+            onLinkedChange={(id, patch) =>
+              updateProfile((p) => ({ ...p, games: p.games.map((g) => (g.id === id ? (patch.evals ? withCurrentAccuracy({ ...g, ...patch }, true) : { ...g, ...patch }) : g)) }))
+            }
             active={tab === "analise"}
             onEditPosition={(fen) => editFen(fen)}
           />

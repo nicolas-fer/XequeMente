@@ -6,6 +6,16 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.5.1] - 2026-11-20
+
+### Adicionado
+- **O relatório do treinador acompanha a partida na Análise**: ao abrir uma partida salva (botão "Abrir na Análise" ou clicando num lance do relatório), a aba Treinador mostra o relatório completo (resumo, o que você fez bem e onde errou, com lances clicáveis) acima da conversa.
+- Na aba Revisão, ao parar num lance que o treinador comentou no relatório, o balão mostra o comentário dele e a lição daquele lance.
+- **Selo da classificação no tabuleiro**, como no chess.com: na Análise revisada, o último lance ganha o selo (melhor ★, excelente ✔, teórico, imprecisão ?!, erro ?, erro grave ??…) no canto da casa para onde a peça foi.
+
+### Corrigido
+- Partidas gravadas antes da v0.3.0 mostravam na aba Partidas e no Perfil a precisão antiga (média simples), diferente da Análise (algoritmo do Lichess). Ao abrir o app, a precisão das partidas com revisão salva é recalculada uma vez e gravada; partidas sem revisão são recalculadas quando forem revisadas na Análise.
+
 ## [0.5.0] - 2026-11-20
 
 ### Adicionado
@@ -95,7 +105,8 @@ Primeira versão.
 - **Configuração completa do Stockfish**: download do executável oficial, threads, hash, limites da análise ao vivo, critério da revisão e todas as opções UCI anunciadas pelo motor.
 - Instaladores para Windows (NSIS e MSI).
 
-[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.0...HEAD
+[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.3.0...v0.4.0

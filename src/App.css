@@ -2610,3 +2610,96 @@ input[type="range"]::-webkit-slider-thumb {
     font-size: 13px;
   }
 }
+
+/* Análise: comentário do relatório do treinador sobre o lance atual (dentro do balão claro) */
+.bubble-note {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+.bubble-note-label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #b0412e;
+}
+.bubble-note.good .bubble-note-label {
+  color: #4f7f22;
+}
+.bubble-note .lesson {
+  color: #9a5a12;
+}
+
+/* Análise › Treinador: relatório da partida no topo da conversa */
+.report-details {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.report-details > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--muted);
+  padding: 2px 0;
+  user-select: none;
+}
+.report-details > summary::-webkit-details-marker {
+  display: none;
+}
+.report-details > summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.15s;
+}
+.report-details[open] > summary::before {
+  transform: rotate(90deg);
+}
+.report-details[open] > summary {
+  margin-bottom: 10px;
+}
+.report-details .moments {
+  margin-top: 10px;
+}
+
+/* Selo da classificação do último lance sobre o tabuleiro (Análise) */
+.square-badge {
+  position: absolute;
+  width: 5%;
+  aspect-ratio: 1;
+  z-index: 31; /* acima das peças e das setas */
+  pointer-events: none;
+  animation: square-badge-pop 0.22s cubic-bezier(0.3, 1.5, 0.6, 1) 0.14s both;
+}
+.square-badge .badge {
+  width: 100%;
+  height: 100%;
+  font-size: calc(var(--board) * 0.021);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.45),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+}
+@keyframes square-badge-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .square-badge {
+    animation: none;
+  }
+}

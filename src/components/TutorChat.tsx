@@ -55,6 +55,8 @@ interface Props {
   onMessagesChange?: (messages: StoredChatMsg[]) => void;
   /** clique num lance citado */
   onMoveClick?: MoveClickHandler;
+  /** conteúdo fixo no topo da conversa (ex.: relatório do treinador sobre a partida) */
+  header?: ReactNode;
 }
 
 const toChat = (list?: StoredChatMsg[]): ChatMsg[] => (list ?? []).map((m) => ({ ...m, id: crypto.randomUUID() }));
@@ -165,6 +167,7 @@ export function TutorChat({
   configured,
   quick = QUICK,
   intro,
+  header,
   inline = false,
   resetKey,
   initialMessages,
@@ -260,6 +263,7 @@ export function TutorChat({
   return (
     <div className={`tutor ${inline ? "inline" : ""}`}>
       <div className="chat-scroll" ref={scrollRef}>
+        {header}
         {!configured && (
           <CoachBubble>Para conversar comigo, configure a chave de API do Claude ou do Gemini na aba Configurações.</CoachBubble>
         )}

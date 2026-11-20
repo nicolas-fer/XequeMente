@@ -1,6 +1,6 @@
 /** Perfil do jogador: histórico, memória do treinador e prompts das análises. */
 import { api } from "./api";
-import { makeMove, type MoveClass, type MoveNode, type PositionEval } from "./chess-utils";
+import { gameAccuracy, makeMove, type MoveClass, type MoveNode, type PositionEval } from "./chess-utils";
 import type { StoredChatMsg } from "../components/TutorChat";
 import { PHASE_LABEL, type MistakeInfo, type Phase } from "./review";
 import { openingContext, openingFamily, trackOpening, type OpeningTrack } from "./openings";
@@ -40,6 +40,8 @@ export interface GameRecord {
   digest?: string[];
   /** conversa com o treinador sobre esta partida */
   chat?: StoredChatMsg[];
+  /** "lichess" = precisão já calculada pelo algoritmo atual (partidas antigas usavam média simples) */
+  accuracyAlgo?: "lichess";
 }
 
 export interface CoachProfileAnalysis {
@@ -81,14 +83,33 @@ export function normalizeProfile(raw: unknown): ProfileData {
   return {
     version: 1,
     playerName: typeof r.playerName === "string" ? r.playerName : "",
-    games: Array.isArray(r.games) ? r.games : [],
+    games: Array.isArray(r.games) ? r.games.map((g) => withCurrentAccuracy(g)) : [],
     memory: Array.isArray(r.memory) ? r.memory.filter((m) => typeof m === "string") : [],
     coachAnalysis: r.coachAnalysis ?? null,
   };
 }
 
+/**
+ * Precisão da partida recalculada pela revisão salva, com o algoritmo atual (Lichess).
+ * Partidas gravadas antes da v0.3.0 guardavam a média simples; revisões feitas depois na
+ * Análise também passam por aqui. Sem revisão completa, mantém o valor gravado.
+ */
+export function withCurrentAccuracy(g: GameRecord, force = false): GameRecord {
+  if (!g.evals?.length || (g.accuracyAlgo === "lichess" && !force)) return g;
+  const acc = gameAccuracy(movesOf(g), g.evals);
+  const mine = acc[g.playerColor];
+  const theirs = acc[g.playerColor === "w" ? "b" : "w"];
+  if (mine === null) return g;
+  return { ...g, accuracy: mine, opponentAccuracy: theirs ?? g.opponentAccuracy, accuracyAlgo: "lichess" };
+}
+
 export async function loadProfile(): Promise<ProfileData> {
-  return normalizeProfile(await api.profileGet());
+  const raw = await api.profileGet();
+  const p = normalizeProfile(raw);
+  // grava já a precisão recalculada das partidas antigas (uma vez só)
+  const before = (raw as Partial<ProfileData> | null)?.games;
+  if (Array.isArray(before) && p.games.some((g, i) => g !== before[i])) await saveProfile(p);
+  return p;
 }
 
 export async function saveProfile(p: ProfileData) {

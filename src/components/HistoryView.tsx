@@ -7,6 +7,7 @@ import { botFor } from "../lib/bots";
 import { PHASE_LABEL } from "../lib/review";
 import { openingFamily, openingLabel } from "../lib/openings";
 import { OpeningLine } from "./MoveList";
+import { CoachReport } from "./CoachReport";
 import {
   GAME_REPORT_SCHEMA,
   coachSystem,
@@ -20,7 +21,7 @@ import {
   type ProfileData,
 } from "../lib/profile";
 import type { OpenOpts } from "../lib/useGame";
-import { CoachBubble, Markdown, TutorChat, linkMoves } from "./TutorChat";
+import { CoachBubble, TutorChat, linkMoves } from "./TutorChat";
 
 interface Props {
   settings: Settings;
@@ -218,43 +219,7 @@ function GameDetail({
           )}
 
           {g.coach ? (
-            <>
-              <CoachBubble>
-                <strong>{g.coach.headline}</strong>
-                <Markdown text={g.coach.report} onMoveClick={openRef} />
-              </CoachBubble>
-              {g.coach.good_moments.length > 0 && (
-                <div className="moments good">
-                  <div className="card-title">O que você fez bem</div>
-                  {g.coach.good_moments.map((m, i) => (
-                    <div key={i} className="moment">
-                      <span className="badge mini" style={{ background: CLASS_INFO.best.color }}>
-                        ★
-                      </span>
-                      <div>
-                        <strong>{linkMoves(m.move, openRef)}</strong> {m.why}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {g.coach.mistakes.length > 0 && (
-                <div className="moments bad">
-                  <div className="card-title">Onde errou e a lição</div>
-                  {g.coach.mistakes.map((m, i) => (
-                    <div key={i} className="moment">
-                      <span className="badge mini" style={{ background: CLASS_INFO.blunder.color }}>
-                        ?
-                      </span>
-                      <div>
-                        <strong>{linkMoves(m.move, openRef)}</strong> {m.what_happened}
-                        <div className="lesson">Lição: {m.lesson}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
+            <CoachReport coach={g.coach} onMoveClick={openRef} />
           ) : busy ? (
             <CoachBubble typing />
           ) : (

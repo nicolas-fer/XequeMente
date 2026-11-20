@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Chessboard, type Arrow } from "react-chessboard";
 import { Chess, type Square } from "chess.js";
-import { squareOfKingInCheck } from "../lib/chess-utils";
+import { CLASS_INFO, squareOfKingInCheck, type MoveClass } from "../lib/chess-utils";
 import { ArrowLayer, legalTargetStyles, mergeSquareStyles, useAnnotations } from "./boardKit";
 
 interface Props {
@@ -13,6 +13,8 @@ interface Props {
   /** lance destacado ao passar o mouse numa linha do motor */
   previewMove?: { from: string; to: string } | null;
   interactive?: boolean;
+  /** selo da classificação do último lance, no canto da casa de destino (como no chess.com) */
+  moveBadge?: { square: string; cls: MoveClass } | null;
 }
 
 const PROMO = [
@@ -23,7 +25,7 @@ const PROMO = [
 ];
 const GLYPH: Record<string, [string, string]> = { q: ["♕", "♛"], r: ["♖", "♜"], b: ["♗", "♝"], n: ["♘", "♞"] };
 
-export function BoardView({ fen, orientation, onMove, arrows = [], lastMove, previewMove, interactive = true }: Props) {
+export function BoardView({ fen, orientation, onMove, arrows = [], lastMove, previewMove, interactive = true, moveBadge }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<string | null>(null);
   const [promo, setPromo] = useState<{ from: string; to: string; color: "w" | "b" } | null>(null);
@@ -104,6 +106,7 @@ export function BoardView({ fen, orientation, onMove, arrows = [], lastMove, pre
         }}
       />
       <ArrowLayer arrows={[...arrows, ...notes.arrows]} orientation={orientation} />
+      {moveBadge && <SquareBadge key={`${fen}-${moveBadge.cls}`} square={moveBadge.square} cls={moveBadge.cls} orientation={orientation} />}
       {promo && (
         <div className="promo-overlay" onClick={() => setPromo(null)}>
           <div className="promo-box" onClick={(e) => e.stopPropagation()}>
@@ -128,5 +131,24 @@ export function BoardView({ fen, orientation, onMove, arrows = [], lastMove, pre
         </div>
       )}
     </div>
+  );
+}
+
+/** Selo da classificação no canto superior direito de uma casa. */
+function SquareBadge({ square, cls, orientation }: { square: string; cls: MoveClass; orientation: "white" | "black" }) {
+  const f = square.charCodeAt(0) - 97;
+  const r = parseInt(square[1], 10) - 1;
+  const col = orientation === "white" ? f : 7 - f;
+  const row = orientation === "white" ? 7 - r : r;
+  const info = CLASS_INFO[cls];
+  // canto superior direito da casa, um pouco para fora (sem passar da borda do tabuleiro)
+  const left = Math.min((col + 1) * 12.5 - 3.4, 100 - 5.2);
+  const top = Math.max(row * 12.5 - 1.6, 0.2);
+  return (
+    <span className="square-badge" style={{ left: `${left}%`, top: `${top}%` }} title={info.label}>
+      <span className="badge" style={{ background: info.color }}>
+        {info.symbol}
+      </span>
+    </span>
   );
 }
