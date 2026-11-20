@@ -554,7 +554,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
     void finish({ winner: game.playerColor === "w" ? "b" : "w", reason: "abandono" });
   }
 
-  function openInAnalysis(ply?: number) {
+  function openInAnalysis(ply?: number, panel: "revisao" | "treinador" = "revisao") {
     const game = gameRef.current;
     if (!game) return;
     const rec = post?.recordId ? profileRef.current.games.find((x) => x.id === post.recordId) : null;
@@ -566,16 +566,18 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       Black: game.playerColor === "b" ? me : botLabel,
       [game.playerColor === "w" ? "BlackElo" : "WhiteElo"]: String(game.bot.elo),
       Result: !r ? "*" : r.winner === null ? "1/2-1/2" : r.winner === "w" ? "1-0" : "0-1",
-    }, { ply, preReview: rec?.evals ?? null });
+    }, { ply, preReview: rec?.evals ?? null, recordId: rec?.id ?? null, panel });
   }
 
   /** Clique num lance citado pelo treinador: abre a Análise naquela posição. */
-  function openMoveRef(moveNumber: number, black: boolean, san: string) {
+  function openMoveRef(moveNumber: number, black: boolean, san: string, panel: "revisao" | "treinador" = "revisao") {
     const game = gameRef.current;
     if (!game) return;
     const ply = resolveMoveRef(game.moves, moveNumber, black, san);
-    if (ply !== null) openInAnalysis(ply);
+    if (ply !== null) openInAnalysis(ply, panel);
   }
+  /** lances clicados dentro do chat: a conversa continua na aba Treinador da Análise */
+  const openMoveRefFromChat = (n: number, black: boolean, san: string) => openMoveRef(n, black, san, "treinador");
 
   /** Contexto da partida terminada para o chat do pós-jogo. */
   function postGameContext(game: LiveGame, summary: PlayerSummary, coach: CoachGameReport | null): string {
@@ -910,12 +912,12 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
                 configured={settings.provider === "gemini" ? !!settings.geminiApiKey : !!settings.claudeApiKey}
                 quick={POST_QUICK}
                 intro="Ficou alguma dúvida sobre a partida? Pergunte sobre um lance, um momento ou o que treinar."
-                resetKey={post.recordId ?? g.id}
+                resetKey={`${post.recordId ?? g.id}-${record?.chat?.length ?? 0}`}
                 initialMessages={record?.chat}
                 onMessagesChange={(chat) =>
                   post.recordId && updateProfile((p) => ({ ...p, games: p.games.map((x) => (x.id === post.recordId ? { ...x, chat } : x)) }))
                 }
-                onMoveClick={openMoveRef}
+                onMoveClick={openMoveRefFromChat}
               />
             </div>
           )}

@@ -30,6 +30,8 @@ import { pathMoves, type GameApi } from "../lib/useGame";
 import { useLiveEngine } from "../lib/useEngine";
 import { playMoveSound } from "../lib/sound";
 import { evaluateGame, formatEta, reviewLimitOf } from "../lib/review";
+import { recordContext, type GameRecord } from "../lib/profile";
+import { compactEval } from "../lib/chess-utils";
 import { BoardView } from "./BoardView";
 import { useBoardFit } from "./boardKit";
 import { EvalBar } from "./EvalBar";
@@ -44,6 +46,10 @@ interface Props {
   engineGen: number;
   /** memória do treinador sobre o aluno (vinda do perfil) */
   memory: string[];
+  /** partida salva vinculada (aberta a partir do pós-jogo ou da aba Partidas) */
+  linkedRecord: GameRecord | null;
+  /** salva a conversa / a revisão na partida vinculada */
+  onLinkedChange: (id: string, patch: Partial<GameRecord>) => void;
   active: boolean;
   onEditPosition: (fen: string) => void;
 }
@@ -94,7 +100,7 @@ function Stars({ value }: { value: number | null }) {
   );
 }
 
-export function AnalysisView({ game, settings, engineReady, engineGen, memory, active, onEditPosition }: Props) {
+export function AnalysisView({ game, settings, engineReady, engineGen, memory, linkedRecord, onLinkedChange, active, onEditPosition }: Props) {
   const { state, fen, lastMove } = game;
   const [orientation, setOrientation] = useState<"white" | "black">("white");
   const [engineOn, setEngineOn] = useState(true);
@@ -117,9 +123,22 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
     // Partida do histórico: a revisão já vem pronta.
     if (pre && pre.length === state.moves.length + 1 && pre.every(Boolean))
       setReview({ status: "done", done: pre.length, total: pre.length, evals: pre });
-    else setReview(emptyReview);
+    else {
+      setReview(emptyReview);
+      // Partida salva sem revisão (versões antigas): revisa sozinho e guarda na partida.
+      if (state.linkedRecordId && state.moves.length && engineReady) autoReview.current = true;
+    }
+    if (state.openPanel) setPanel(state.openPanel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.version]);
+
+  const autoReview = useRef(false);
+  useEffect(() => {
+    if (autoReview.current && review.status === "idle") {
+      autoReview.current = false;
+      void runReview();
+    }
+  });
 
   const reviews: (MoveReview | null)[] = useMemo(
     () =>
@@ -200,6 +219,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
         return;
       }
       setReview({ status: "done", done: total, total, evals });
+      if (state.linkedRecordId) onLinkedChange(state.linkedRecordId, { evals: evals.map(compactEval) });
     } catch (e) {
       setReview({ status: "idle", done: 0, total: 0, evals: [], error: errorText(e) });
     }
@@ -315,6 +335,8 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
 
   const headers = state.headers;
   const configured = settings.provider === "gemini" ? !!settings.geminiApiKey : !!settings.claudeApiKey;
+  // só vale enquanto a análise mostra a mesma partida (se o aluno carregar outra, desliga)
+  const linked = linkedRecord && state.linkedRecordId === linkedRecord.id ? linkedRecord : null;
   const providerLabel = settings.provider === "gemini" ? settings.geminiModel : settings.claudeModel;
   const nameOf = (c: "w" | "b") => {
     const n = c === "w" ? headers.White : headers.Black;
@@ -622,11 +644,24 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
 
         {/* ---------------- Treinador (sempre montado para manter a conversa) */}
         <div className={`panel-body ${panel === "treinador" ? "" : "hidden"}`}>
+          {linked && (
+            <div className="linked-banner">
+              Conversa da partida contra <strong>{linked.botName}</strong> · {new Date(linked.date).toLocaleDateString("pt-BR")}
+            </div>
+          )}
           <TutorChat
-            buildContext={buildContext}
+            buildContext={() =>
+              linked
+                ? `${recordContext(linked, memory)}\n\n[POSIÇÃO QUE O ALUNO ESTÁ OLHANDO AGORA NO TABULEIRO]\n${buildContext()}`
+                : buildContext()
+            }
             ask={ask}
             providerLabel={providerLabel}
             configured={configured}
+            resetKey={linked ? `partida-${linked.id}-${linked.chat?.length ?? 0}` : "livre"}
+            initialMessages={linked?.chat}
+            onMessagesChange={linked ? (chat) => onLinkedChange(linked.id, { chat }) : undefined}
+            intro={linked ? `Continuando nossa conversa sobre a partida contra ${linked.botName}. Pergunte sobre esta posição ou qualquer lance.` : undefined}
             onMoveClick={(n, black, san) => {
               const p = resolveMoveRef(state.moves, n, black, san);
               if (p !== null) game.goto({ inVar: false, ply: p });

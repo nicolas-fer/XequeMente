@@ -188,6 +188,17 @@ export function TutorChat({
     } else scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, inline]);
 
+  // Salva depois que a resposta termina (fora do render), para quem guarda a conversa.
+  const pendingSave = useRef(false);
+  useEffect(() => {
+    if (!pendingSave.current) return;
+    pendingSave.current = false;
+    onMessagesChange?.(
+      messages.filter((m) => !m.failed && !m.streaming).map(({ role, display, apiContent }) => ({ role, display, apiContent })),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]);
+
   const firstReset = useRef(true);
   useEffect(() => {
     if (firstReset.current) {
@@ -223,13 +234,10 @@ export function TutorChat({
     });
     try {
       await api.tutorChat(requestId, history);
-      setMessages((prev) => {
-        const next = prev.map((m) => (m.id === requestId ? { ...m, streaming: false, apiContent: m.display || "(sem resposta)" } : m));
-        onMessagesChange?.(
-          next.filter((m) => !m.failed && !m.streaming).map(({ role, display, apiContent }) => ({ role, display, apiContent })),
-        );
-        return next;
-      });
+      pendingSave.current = true;
+      setMessages((prev) =>
+        prev.map((m) => (m.id === requestId ? { ...m, streaming: false, apiContent: m.display || "(sem resposta)" } : m)),
+      );
     } catch (e) {
       setError(errorText(e));
       setMessages((prev) =>
@@ -322,8 +330,8 @@ export function TutorChat({
             <button
               className="link small"
               onClick={() => {
+                pendingSave.current = true;
                 setMessages([]);
-                onMessagesChange?.([]);
               }}
             >
               Nova conversa

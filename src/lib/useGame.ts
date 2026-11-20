@@ -22,7 +22,13 @@ export interface GameState {
   version: number;
   /** revisão já feita (ex.: partida do histórico): a Análise mostra sem recalcular */
   preReview?: (PositionEval | null)[] | null;
+  /** partida salva de onde esta análise veio (conversa e revisão ficam ligadas a ela) */
+  linkedRecordId?: string | null;
+  /** aba do painel lateral para abrir */
+  openPanel?: AnalysisPanel | null;
 }
+
+export type AnalysisPanel = "revisao" | "analise" | "treinador";
 
 type Action =
   | {
@@ -33,6 +39,8 @@ type Action =
       atEnd?: boolean;
       ply?: number;
       preReview?: (PositionEval | null)[] | null;
+      recordId?: string | null;
+      panel?: AnalysisPanel | null;
     }
   | { type: "play"; move: MoveNode }
   | { type: "goto"; cursor: Cursor }
@@ -67,6 +75,8 @@ function reducer(s: GameState, a: Action): GameState {
         cursor: { inVar: false, ply: a.ply !== undefined ? Math.max(0, Math.min(a.moves.length, a.ply)) : a.atEnd ? a.moves.length : 0 },
         version: s.version + 1,
         preReview: a.preReview ?? null,
+        linkedRecordId: a.recordId ?? null,
+        openPanel: a.panel ?? null,
       };
     case "play": {
       const { cursor } = s;
@@ -148,7 +158,7 @@ export function useGame() {
       moves: MoveNode[] = [],
       headers: Record<string, string> = {},
       atEnd = false,
-      opts: { ply?: number; preReview?: (PositionEval | null)[] | null } = {},
+      opts: OpenOpts = {},
     ) => dispatch({ type: "load", startFen, moves, headers, atEnd, ...opts }),
     [],
   );
@@ -168,4 +178,7 @@ export type GameApi = ReturnType<typeof useGame>;
 export interface OpenOpts {
   ply?: number;
   preReview?: (PositionEval | null)[] | null;
+  /** id da partida salva: a aba Treinador da Análise continua a conversa dela */
+  recordId?: string | null;
+  panel?: AnalysisPanel | null;
 }

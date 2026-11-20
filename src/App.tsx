@@ -165,6 +165,8 @@ export default function App() {
             engineReady={!!engine}
             engineGen={engineGen}
             memory={profile.memory}
+            linkedRecord={profile.games.find((g) => g.id === game.state.linkedRecordId) ?? null}
+            onLinkedChange={(id, patch) => updateProfile((p) => ({ ...p, games: p.games.map((g) => (g.id === id ? { ...g, ...patch } : g)) }))}
             active={tab === "analise"}
             onEditPosition={(fen) => editFen(fen)}
           />

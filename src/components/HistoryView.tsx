@@ -72,10 +72,16 @@ function GameDetail({
     return g.evals ? c : g.counts ?? null;
   }, [reviews, moves, g]);
 
-  const open = (ply?: number) => onOpenInAnalysis(g.startFen, moves, headersOf(g, profile.playerName), { ply, preReview: g.evals ?? null });
+  const open = (ply?: number, panel: "revisao" | "treinador" = "revisao") =>
+    onOpenInAnalysis(g.startFen, moves, headersOf(g, profile.playerName), { ply, preReview: g.evals ?? null, recordId: g.id, panel });
   const openRef = (n: number, black: boolean, san: string) => {
     const ply = resolveMoveRef(moves, n, black, san);
     if (ply !== null) open(ply);
+  };
+  /** lances clicados dentro do chat: a conversa continua na aba Treinador da Análise */
+  const openRefFromChat = (n: number, black: boolean, san: string) => {
+    const ply = resolveMoveRef(moves, n, black, san);
+    if (ply !== null) open(ply, "treinador");
   };
 
   async function generateReport() {
@@ -279,10 +285,10 @@ function GameDetail({
               configured={aiConfigured}
               quick={HISTORY_QUICK}
               intro="Quer revisitar esta partida? Pergunte sobre um lance ou o que mudou desde então."
-              resetKey={g.id}
+              resetKey={`${g.id}-${g.chat?.length ?? 0}`}
               initialMessages={g.chat}
               onMessagesChange={(chat) => updateProfile((p) => ({ ...p, games: p.games.map((x) => (x.id === g.id ? { ...x, chat } : x)) }))}
-              onMoveClick={openRef}
+              onMoveClick={openRefFromChat}
             />
           </div>
 

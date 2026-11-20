@@ -6,6 +6,15 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.4.0] - 2026-11-20
+
+### Adicionado
+- **A conversa com o treinador acompanha você até a Análise**: ao clicar num lance citado no chat (pós-jogo ou aba Partidas), a Análise abre naquela posição já na aba Treinador, com a mesma conversa. Dá para continuar perguntando: o treinador recebe a partida inteira e a posição do tabuleiro, e as mensagens ficam salvas na partida (aparecem também na aba Partidas).
+- Partidas antigas, sem revisão salva, são revisadas automaticamente ao abrir na Análise, e a revisão fica guardada na partida.
+
+### Corrigido
+- Os chats da mesma partida (pós-jogo, aba Partidas e Análise) ficam sincronizados e não sobrescrevem as mensagens um do outro.
+
 ## [0.3.0] - 2026-11-20
 
 ### Corrigido
@@ -67,7 +76,8 @@ Primeira versão.
 - **Configuração completa do Stockfish**: download do executável oficial, threads, hash, limites da análise ao vivo, critério da revisão e todas as opções UCI anunciadas pelo motor.
 - Instaladores para Windows (NSIS e MSI).
 
-[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.3.0...HEAD
+[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.1.0...v0.2.0
