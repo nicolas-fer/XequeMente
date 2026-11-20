@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Chessboard } from "react-chessboard";
 import { Chess, type Square } from "chess.js";
 import { squareOfKingInCheck } from "../lib/chess-utils";
@@ -43,13 +43,19 @@ export function PlayBoard({ fen, playerColor, active, lastMove, premove, onMove,
   }, [fen, myTurn]);
 
 
+  // Estado mais recente para os handlers: um arraste começado na vez do adversário
+  // pode terminar depois que ele jogou, e aí o lance é normal (não pré-lance).
+  const live = useRef({ chess, myTurn, active });
+  live.current = { chess, myTurn, active };
+
   const isOwn = (pieceType: string) => pieceType[0] === playerColor;
   const isPawnToLastRank = (from: string, to: string) => {
-    const p = chess?.get(from as Square);
+    const p = live.current.chess?.get(from as Square);
     return !!p && p.type === "p" && (to[1] === "8" || to[1] === "1");
   };
 
   function attempt(from: string, to: string): boolean {
+    const { chess, myTurn, active } = live.current;
     if (!chess || !active || from === to) return false;
     if (!myTurn) {
       // Pré-lance: guarda e executa quando o adversário jogar.

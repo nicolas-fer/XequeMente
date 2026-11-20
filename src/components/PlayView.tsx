@@ -444,6 +444,23 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
     }
   }, [applyMove, finish, remaining, rerender]);
 
+  /**
+   * Pré-lance vindo do tabuleiro. Se já é a vez do jogador (ex.: segurou a peça enquanto o
+   * adversário jogava e soltou depois), joga o lance na hora em vez de guardar como pré-lance.
+   */
+  const handlePremove = (p: Premove | null) => {
+    const game = gameRef.current;
+    if (!p) return setPremove(null);
+    if (!game || game.result) return;
+    const cur = game.moves.length ? game.moves[game.moves.length - 1].fenAfter : game.startFen;
+    if (cur.split(" ")[1] === game.playerColor) {
+      setPremove(null);
+      playerMove(p.from, p.to, p.promotion);
+      return;
+    }
+    setPremove(p);
+  };
+
   // Vez do bot?
   useEffect(() => {
     if (stage !== "playing" || !g || g.result) return;
@@ -741,7 +758,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
             lastMove={last ? { from: last.from, to: last.to } : null}
             premove={premove}
             onMove={playerMove}
-            onPremove={(p) => (r ? undefined : setPremove(p))}
+            onPremove={handlePremove}
           />
         </div>
         <div className="player-bar">

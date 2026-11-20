@@ -28,7 +28,7 @@ import {
 } from "../lib/chess-utils";
 import { pathMoves, type GameApi } from "../lib/useGame";
 import { useLiveEngine } from "../lib/useEngine";
-import { playMoveSound } from "../lib/sound";
+import { playMoveSound, sfx } from "../lib/sound";
 import { evaluateGame, formatEta, reviewLimitOf } from "../lib/review";
 import { recordContext, type GameRecord } from "../lib/profile";
 import { compactEval } from "../lib/chess-utils";
@@ -177,11 +177,22 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
       const m = makeMove(fen, from, to, promotion);
       if (!m) return false;
       game.play(m);
-      playMoveSound(m.san);
       return true;
     },
     [fen, game],
   );
+
+  // Som do lance a cada mudança de posição: lance feito no tabuleiro, linha do motor, setas,
+  // lista de lances, gráfico… Ao carregar uma partida nova (versão muda), fica em silêncio.
+  const prevNav = useRef({ fen, version: state.version });
+  useEffect(() => {
+    const prev = prevNav.current;
+    prevNav.current = { fen, version: state.version };
+    if (prev.version !== state.version || prev.fen === fen || !active) return;
+    if (lastMove) playMoveSound(lastMove.san);
+    else sfx.move();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fen, state.version]);
 
   useEffect(() => {
     if (!active) return;
@@ -618,10 +629,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
                     onBlur={() => setHoverMove(null)}
                     onClick={() => {
                       const m = uciToMove(fen, l.pv[0]);
-                      if (m) {
-                        game.play(m);
-                        playMoveSound(m.san);
-                      }
+                      if (m) game.play(m);
                     }}
                   >
                     <span className={`pv-eval ${(l.mate ?? 0) > 0 || (l.mate === null && (l.cp ?? 0) >= 0) ? "pos" : "neg"}`}>
