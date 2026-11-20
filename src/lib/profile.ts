@@ -11,6 +11,8 @@ export interface CoachGameReport {
   good_moments: { move: string; why: string }[];
   mistakes: { move: string; what_happened: string; lesson: string }[];
   memory: string[];
+  /** resumo curto para o treinador falar em voz alta (relatórios antigos não têm) */
+  speech?: string;
 }
 
 export interface GameRecord {
@@ -270,6 +272,15 @@ export function coachSystem(tutorLevel: string) {
   ].join("\n");
 }
 
+/** Guarda no registro da partida o resumo falado gerado para um relatório antigo. */
+export const withCoachSpeech = (p: ProfileData, id: string, speech: string): ProfileData => ({
+  ...p,
+  games: p.games.map((x) => (x.id === id && x.coach ? { ...x, coach: { ...x.coach, speech } } : x)),
+});
+
+export const SPEECH_RULES =
+  "o que você diz em voz alta ao aluno logo após a partida (vai ser lido por voz sintetizada): 2 ou 3 frases, no máximo 45 palavras, só o essencial (o momento que decidiu a partida e a lição principal). Texto corrido, sem markdown, listas nem porcentagens com casas decimais. Escreva os lances como se fala, sem notação algébrica: 'o bispo em b4', 'o roque pequeno', 'no lance 19', 'a dama toma em d5'.";
+
 const MEMORY_RULES =
   "Campo memory: devolva a lista COMPLETA e atualizada (no máximo 12 itens) de observações duradouras sobre o aluno, juntando a memória anterior com o que esta análise mostrou. Cada item tem até 140 caracteres, descreve um fato sobre o aluno (força, fraqueza, hábito, preferência de abertura, gestão de tempo, progresso) e, quando possível, a evidência (ex.: 'em 3 de 5 partidas'). Remova o que ficou desatualizado; não guarde detalhes de uma única partida que não indiquem padrão.";
 
@@ -312,8 +323,9 @@ export const GAME_REPORT_SCHEMA = {
       },
     },
     memory: { type: "array", items: { type: "string" } },
+    speech: { type: "string" },
   },
-  required: ["headline", "report", "good_moments", "mistakes", "memory"],
+  required: ["headline", "report", "good_moments", "mistakes", "memory", "speech"],
   additionalProperties: false,
 };
 
@@ -365,6 +377,7 @@ export function gameReportPrompt(args: {
     "report: análise de treinador em markdown, 150 a 300 palavras: o fio da partida, o momento decisivo, o que foi bem, o que custou caro e como isso se conecta (ou não) com os padrões da memória.",
     "good_moments: de 1 a 3 lances bons do aluno (use a notação do PGN, ex.: '14. Nf5') com o porquê.",
     "mistakes: até 4 erros mais instrutivos, cada um com o que aconteceu e a lição prática.",
+    `speech: ${SPEECH_RULES}`,
     MEMORY_RULES,
   ]
     .filter((l) => l !== "")

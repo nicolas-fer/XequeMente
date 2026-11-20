@@ -2703,3 +2703,59 @@ input[type="range"]::-webkit-slider-thumb {
     animation: none;
   }
 }
+
+/* ---------------------------------------------------------------- voz do treinador */
+.report-head {
+  display: flow-root;
+}
+.voice-btn {
+  float: right;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: -3px -4px 4px 10px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.07);
+  color: var(--bubble-text);
+  font-size: 12px;
+  font-weight: 800;
+  box-shadow: none;
+}
+.voice-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.13);
+}
+.voice-btn.on {
+  background: var(--green);
+  color: #fff;
+}
+.voice-btn.on:hover:not(:disabled) {
+  background: var(--green-hover);
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.voice-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.voice-settings > p {
+  flex-basis: 100%;
+  margin: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spin {
+    animation-duration: 2.5s;
+  }
+}

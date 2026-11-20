@@ -11,13 +11,14 @@ import {
   GAME_REPORT_SCHEMA,
   coachSystem,
   gameReportPrompt,
+  withCoachSpeech,
   type CoachGameReport,
   type GameRecord,
   type ProfileData,
 } from "../lib/profile";
 import { PlayBoard, type Premove } from "./PlayBoard";
 import { OpeningLine } from "./MoveList";
-import { CoachReport } from "./CoachReport";
+import { CoachReport, speakCoach } from "./CoachReport";
 import { openingContext, trackOpening } from "../lib/openings";
 import { useBoardFit } from "./boardKit";
 import { CoachBubble, TutorChat } from "./TutorChat";
@@ -233,6 +234,8 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
           games: p.games.map((x) => (x.id === record.id ? { ...x, coach: rep } : x)),
         }));
         setPost((p) => (p ? { ...p, status: "done", coach: rep } : p));
+        if (settingsRef.current.coachVoice)
+          speakCoach(rep, settingsRef.current.tutorLevel, (sp) => updateProfile((p) => withCoachSpeech(p, record.id, sp))).catch(() => {});
       } catch (e) {
         setPost((p) => (p ? { ...p, status: "done", coachError: errorText(e) } : p));
       }
@@ -868,7 +871,15 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
             const c = (post?.coach ?? record?.coach)!;
             return (
               <>
-                <CoachReport coach={c} onMoveClick={openMoveRef} />
+                <CoachReport
+                  coach={c}
+                  onMoveClick={openMoveRef}
+                  tutorLevel={settings.tutorLevel}
+                  onSpeech={(sp) => {
+                    const id = post?.recordId ?? record?.id;
+                    if (id) updateProfile((p) => withCoachSpeech(p, id, sp));
+                  }}
+                />
                 <div className="hint">O treinador guardou na memória o que aprendeu sobre você (veja em Perfil).</div>
               </>
             );

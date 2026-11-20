@@ -38,6 +38,7 @@ pub fn run() {
             llm::tutor_cancel,
             llm::image_to_board,
             llm::llm_json,
+            llm::tts_speak,
             llm::llm_models,
         ])
         .run(tauri::generate_context!())

@@ -7,11 +7,12 @@ import { botFor } from "../lib/bots";
 import { PHASE_LABEL } from "../lib/review";
 import { openingFamily, openingLabel } from "../lib/openings";
 import { OpeningLine } from "./MoveList";
-import { CoachReport } from "./CoachReport";
+import { CoachReport, speakCoach } from "./CoachReport";
 import {
   GAME_REPORT_SCHEMA,
   coachSystem,
   gameReportPrompt,
+  withCoachSpeech,
   headersOf,
   recordOpening,
   movesOf,
@@ -104,6 +105,7 @@ function GameDetail({
         memory: memory.length ? memory : p.memory,
         games: p.games.map((x) => (x.id === g.id ? { ...x, coach: rep } : x)),
       }));
+      if (settings.coachVoice) speakCoach(rep, settings.tutorLevel, (sp) => updateProfile((p) => withCoachSpeech(p, g.id, sp))).catch(() => {});
     } catch (e) {
       setError(errorText(e));
     } finally {
@@ -219,7 +221,12 @@ function GameDetail({
           )}
 
           {g.coach ? (
-            <CoachReport coach={g.coach} onMoveClick={openRef} />
+            <CoachReport
+              coach={g.coach}
+              onMoveClick={openRef}
+              tutorLevel={settings.tutorLevel}
+              onSpeech={(sp) => updateProfile((p) => withCoachSpeech(p, g.id, sp))}
+            />
           ) : busy ? (
             <CoachBubble typing />
           ) : (

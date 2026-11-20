@@ -560,6 +560,155 @@ pub async fn llm_json(
     }
 }
 
+// ---------------------------------------------------------------- Voz do treinador (TTS do Gemini)
+
+const TTS_MODEL: &str = "gemini-3.8-flash-tts";
+const TTS_STYLE: &str = "Leia em voz alta, em português do Brasil, como um treinador de xadrez calmo, caloroso e encorajador, em ritmo natural de conversa:";
+/// Quantos áudios ficam guardados no cache (os mais recentes).
+const TTS_CACHE_KEEP: usize = 40;
+
+/// Cabeçalho WAV para PCM 16 bits mono (o Gemini às vezes devolve só o PCM cru, "audio/L16").
+fn wav_from_pcm(pcm: &[u8], rate: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity(44 + pcm.len());
+    let len = pcm.len() as u32;
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + len).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    out.extend_from_slice(&1u16.to_le_bytes()); // mono
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&(rate * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&len.to_le_bytes());
+    out.extend_from_slice(pcm);
+    out
+}
+
+fn decode_base64(s: &str) -> Result<Vec<u8>, String> {
+    fn val(c: u8) -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some((c - b'A') as u32),
+            b'a'..=b'z' => Some((c - b'a' + 26) as u32),
+            b'0'..=b'9' => Some((c - b'0' + 52) as u32),
+            b'+' | b'-' => Some(62),
+            b'/' | b'_' => Some(63),
+            _ => None,
+        }
+    }
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for &c in s.as_bytes() {
+        if c == b'=' || c.is_ascii_whitespace() {
+            continue;
+        }
+        let v = val(c).ok_or("Áudio em formato inesperado.")?;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
+        }
+    }
+    Ok(out)
+}
+
+fn tts_cache_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
+    use tauri::Manager;
+    let dir = app.path().app_cache_dir().ok()?.join("tts");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir)
+}
+
+/// Mantém só os áudios mais recentes no cache.
+fn prune_tts_cache(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let mut files: Vec<_> = entries
+        .filter_map(|e| e.ok())
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .collect();
+    if files.len() <= TTS_CACHE_KEEP {
+        return;
+    }
+    files.sort_by(|a, b| b.0.cmp(&a.0));
+    for (_, path) in files.into_iter().skip(TTS_CACHE_KEEP) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Lê `text` com a voz do Gemini e devolve o WAV (bytes crus para o front).
+/// Usa a chave do Gemini mesmo quando o provedor do tutor é o Claude; sem ela, o front usa a voz do Windows.
+#[tauri::command]
+pub async fn tts_speak(
+    app: AppHandle,
+    settings: State<'_, SettingsState>,
+    text: String,
+    voice: Option<String>,
+) -> Result<tauri::ipc::Response, String> {
+    let s = settings.0.lock().unwrap().clone();
+    if s.gemini_api_key.trim().is_empty() {
+        return Err("Sem chave do Gemini para a voz do treinador.".into());
+    }
+    let voice = voice.filter(|v| !v.trim().is_empty()).unwrap_or_else(|| s.tts_voice.clone());
+    let voice = if voice.trim().is_empty() { "Charon".to_string() } else { voice };
+
+    let cache = tts_cache_dir(&app);
+    let file = cache.as_ref().map(|dir| {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (TTS_MODEL, TTS_STYLE, &voice, &text).hash(&mut h);
+        dir.join(format!("{:016x}.wav", h.finish()))
+    });
+    if let Some(f) = &file {
+        if let Ok(bytes) = std::fs::read(f) {
+            return Ok(tauri::ipc::Response::new(bytes));
+        }
+    }
+
+    let body = json!({
+        "contents": [{"role": "user", "parts": [{"text": format!("{TTS_STYLE}\n\n{text}")}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}
+        }
+    });
+    let url = format!("{GEMINI_BASE}/{TTS_MODEL}:generateContent");
+    let key = s.gemini_api_key.trim().to_string();
+    let resp = send_with_retry(
+        || Ok(client()?.post(&url).header("x-goog-api-key", &key).json(&body)),
+        "Gemini (voz)",
+    )
+    .await?;
+    let v: Value = resp.json().await.map_err(|e| e.to_string())?;
+    let part = v
+        .pointer("/candidates/0/content/parts")
+        .and_then(|p| p.as_array())
+        .and_then(|parts| parts.iter().find(|p| p.get("inlineData").is_some()))
+        .and_then(|p| p.get("inlineData"))
+        .ok_or("O Gemini não devolveu áudio.")?;
+    let data = decode_base64(part["data"].as_str().unwrap_or_default())?;
+    let mime = part["mimeType"].as_str().unwrap_or_default().to_lowercase();
+    let wav = if data.starts_with(b"RIFF") {
+        data
+    } else {
+        // "audio/L16;codec=pcm;rate=24000"
+        let rate = mime
+            .split(';')
+            .find_map(|p| p.trim().strip_prefix("rate=").and_then(|r| r.parse().ok()))
+            .unwrap_or(24000);
+        wav_from_pcm(&data, rate)
+    };
+    if let (Some(f), Some(dir)) = (&file, &cache) {
+        if std::fs::write(f, &wav).is_ok() {
+            prune_tts_cache(dir);
+        }
+    }
+    Ok(tauri::ipc::Response::new(wav))
+}
+
 // ---------------------------------------------------------------- Lista de modelos
 
 #[derive(Serialize, Clone)]

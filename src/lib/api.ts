@@ -73,6 +73,10 @@ export interface Settings {
   reviewCapMs: number;
   showWdl: boolean;
   engineOptions: Record<string, string>;
+  /** o treinador lê o resumo do relatório em voz alta quando ele fica pronto */
+  coachVoice: boolean;
+  /** voz do Gemini usada na leitura */
+  ttsVoice: string;
 }
 
 export interface ModelOption {
@@ -121,6 +125,8 @@ export const api = {
   profileGet: () => invoke<unknown>("profile_get"),
   profilePut: (data: unknown) => invoke<void>("profile_put", { data }),
   llmModels: (provider: "claude" | "gemini", apiKey: string) => invoke<ModelOption[]>("llm_models", { provider, apiKey }),
+  /** WAV com o texto lido pela voz do Gemini (cacheado no disco pelo app) */
+  ttsSpeak: (text: string, voice?: string) => invoke<ArrayBuffer>("tts_speak", { text, voice: voice ?? null }),
   llmJson: <T>(system: string, prompt: string, schema: object) => invoke<T>("llm_json", { system, prompt, schema }),
 };
 

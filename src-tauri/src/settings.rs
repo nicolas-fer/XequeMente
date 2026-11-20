@@ -34,6 +34,10 @@ pub struct Settings {
     pub show_wdl: bool,
     /// Valores de qualquer opção UCI anunciada pelo motor (nome -> valor).
     pub engine_options: BTreeMap<String, String>,
+    /// O treinador lê em voz alta o resumo do relatório assim que ele fica pronto.
+    pub coach_voice: bool,
+    /// Voz do Gemini usada na leitura (ex.: "Charon").
+    pub tts_voice: String,
 }
 
 impl Default for Settings {
@@ -61,6 +65,8 @@ impl Default for Settings {
             review_cap_ms: 1500,
             show_wdl: true,
             engine_options: BTreeMap::new(),
+            coach_voice: true,
+            tts_voice: "Charon".into(),
         }
     }
 }

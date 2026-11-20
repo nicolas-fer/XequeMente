@@ -1,13 +1,65 @@
+import { useEffect, useState } from "react";
+import { Loader2, Square, Volume2 } from "lucide-react";
 import { CLASS_INFO, resolveMoveRef, type MoveNode } from "../lib/chess-utils";
 import type { CoachGameReport } from "../lib/profile";
+import { errorText } from "../lib/api";
+import { coachVoiceKey, speak, speechOf, stopVoice, useVoice, voiceState } from "../lib/voice";
 import { CoachBubble, Markdown, linkMoves, type MoveClickHandler } from "./TutorChat";
 
+interface Props {
+  coach: CoachGameReport;
+  onMoveClick?: MoveClickHandler;
+  /** nível do aluno (para gerar o resumo falado de relatórios antigos) */
+  tutorLevel?: string;
+  /** guarda o resumo falado gerado na hora (relatórios antigos não têm) */
+  onSpeech?: (speech: string) => void;
+}
+
+/** Fala o resumo do relatório (gerando-o antes, se o relatório for antigo) e guarda o resumo gerado. */
+export function speakCoach(coach: CoachGameReport, tutorLevel = "intermediario", onSpeech?: (speech: string) => void) {
+  return speak(coachVoiceKey(coach), async () => {
+    const text = await speechOf(coach, tutorLevel);
+    if (!coach.speech && text) onSpeech?.(text);
+    return text;
+  });
+}
+
+/** Botão "Ouvir" do relatório: toca, mostra que está gerando e vira "Parar" enquanto fala. */
+function VoiceButton({ coach, tutorLevel, onSpeech }: Omit<Props, "onMoveClick">) {
+  const voice = useVoice();
+  const [error, setError] = useState<string | null>(null);
+  const key = coachVoiceKey(coach);
+  const mine = voice.key === key;
+  // ao sair do relatório (outra partida, tela fechada), a fala dele para
+  useEffect(() => () => void (voiceState().key === key && stopVoice()), [key]);
+
+  function toggle() {
+    if (mine) return stopVoice();
+    setError(null);
+    speakCoach(coach, tutorLevel, onSpeech).catch((e) => setError(errorText(e)));
+  }
+
+  return (
+    <button
+      className={`voice-btn ${mine ? "on" : ""}`}
+      onClick={toggle}
+      title={error ? `Não consegui falar: ${error}` : mine ? "Parar a voz" : "Ouvir o resumo do treinador"}
+    >
+      {mine && voice.phase === "loading" ? <Loader2 size={14} className="spin" /> : mine ? <Square size={12} fill="currentColor" /> : <Volume2 size={15} />}
+      <span>{mine && voice.phase === "loading" ? "Preparando…" : mine ? "Parar" : error ? "Tentar de novo" : "Ouvir"}</span>
+    </button>
+  );
+}
+
 /** Relatório do treinador: resumo, o que foi bem e onde errou (com lances clicáveis). */
-export function CoachReport({ coach, onMoveClick }: { coach: CoachGameReport; onMoveClick?: MoveClickHandler }) {
+export function CoachReport({ coach, onMoveClick, tutorLevel, onSpeech }: Props) {
   return (
     <>
       <CoachBubble>
-        <strong>{coach.headline}</strong>
+        <div className="report-head">
+          <VoiceButton coach={coach} tutorLevel={tutorLevel} onSpeech={onSpeech} />
+          <strong>{coach.headline}</strong>
+        </div>
         <Markdown text={coach.report} onMoveClick={onMoveClick} />
       </CoachBubble>
       {coach.good_moments.length > 0 && (

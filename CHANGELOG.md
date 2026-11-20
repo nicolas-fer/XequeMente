@@ -6,6 +6,14 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.6.0] - 2026-11-20
+
+### Adicionado
+- **O treinador fala**: o relatório pós-jogo ganhou um resumo curto (2 ou 3 frases, até ~45 palavras) feito para ser ouvido, com o momento que decidiu a partida e a lição principal, e os lances ditos como se fala ("o bispo em b4", "no lance 19"). Ele é lido em voz alta assim que o relatório fica pronto, e o botão **Ouvir** no balão do relatório (Jogar, Partidas e Análise) toca ou para a fala a qualquer momento.
+- A voz é do Gemini (TTS) e usa a chave do Gemini, mesmo com o Claude como provedor do tutor; sem essa chave, o app usa a voz do Windows. Cada áudio é gerado uma vez e fica guardado neste computador (os 40 mais recentes).
+- Em Configurações → Tutor: ligar ou desligar a leitura automática, escolher entre 12 vozes e testar a voz escolhida.
+- Relatórios antigos ganham o resumo falado na primeira vez que você clica em Ouvir; ele fica salvo na partida.
+
 ## [0.5.2] - 2026-11-20
 
 ### Alterado
@@ -110,7 +118,8 @@ Primeira versão.
 - **Configuração completa do Stockfish**: download do executável oficial, threads, hash, limites da análise ao vivo, critério da revisão e todas as opções UCI anunciadas pelo motor.
 - Instaladores para Windows (NSIS e MSI).
 
-[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.2...HEAD
+[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.4.1...v0.5.0

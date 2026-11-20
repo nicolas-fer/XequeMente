@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { Cpu, Download, MemoryStick, Play, RefreshCw, RotateCcw, Trash2, Volume2 } from "lucide-react";
+import { Cpu, Download, Loader2, MemoryStick, Play, RefreshCw, RotateCcw, Square, Trash2, Volume2 } from "lucide-react";
+import { TTS_VOICES, speak, stopVoice, useVoice } from "../lib/voice";
 import { SOUND_LIST, previewSound, setSoundEnabled, setSoundVolume, soundEnabled, soundVolume } from "../lib/sound";
 import { MANAGED_OPTIONS, api, errorText, type EngineInfo, type ModelOption, type Settings, type SystemInfo, type UciOption } from "../lib/api";
 
@@ -11,6 +12,48 @@ interface Props {
   onSaved: (s: Settings) => void;
   onRestartEngine: () => Promise<void>;
   onEngineCommand: () => void;
+}
+
+const VOICE_SAMPLE = "Boa partida! Você jogou a abertura com muita segurança. Da próxima vez, antes de soltar a peça, confira as capturas do adversário.";
+
+/** Voz do treinador: leitura automática do relatório e escolha da voz (com teste). */
+function CoachVoiceSettings({ form, set }: { form: Settings; set: <K extends keyof Settings>(k: K, v: Settings[K]) => void }) {
+  const voice = useVoice();
+  const [error, setError] = useState<string | null>(null);
+  const testing = voice.key === "settings-test";
+  const hasGemini = !!form.geminiApiKey.trim();
+  function test() {
+    if (testing) return stopVoice();
+    setError(null);
+    speak("settings-test", () => VOICE_SAMPLE, form.ttsVoice).catch((e) => setError(errorText(e)));
+  }
+  return (
+    <div className="voice-settings">
+      <label className="toggle small">
+        <input type="checkbox" checked={form.coachVoice} onChange={(e) => set("coachVoice", e.target.checked)} /> Ler em voz alta o resumo de cada relatório novo
+      </label>
+      <label className="inline-field">
+        Voz
+        <select value={form.ttsVoice} onChange={(e) => set("ttsVoice", e.target.value)} disabled={!hasGemini}>
+          {TTS_VOICES.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <button className="btn-2 labeled" onClick={test} title={error ?? undefined}>
+        {testing && voice.phase === "loading" ? <Loader2 size={14} className="spin" /> : testing ? <Square size={12} fill="currentColor" /> : <Volume2 size={14} />}
+        {testing ? (voice.phase === "loading" ? "Preparando…" : "Parar") : "Testar voz"}
+      </button>
+      <p className="small muted">
+        {hasGemini
+          ? "A voz é do Gemini e usa a chave do Gemini, mesmo com o Claude como provedor. Cada resumo é gerado uma vez e fica guardado neste computador."
+          : "Sem chave do Gemini, o treinador fala com a voz do Windows. Com a chave, a voz fica bem mais natural."}
+        {error && <span className="error-text"> Falhou: {error}</span>}
+      </p>
+    </div>
+  );
 }
 
 /** Modelo escolhido por padrão quando o atual não está na lista da chave. */
@@ -317,6 +360,7 @@ export function SettingsView({ settings, engine, engineError, onSaved, onRestart
           </label>
         </div>
         <p className="small muted">As chaves ficam só neste computador e as chamadas às APIs saem do processo nativo do app.</p>
+        <CoachVoiceSettings form={form} set={set} />
       </section>
 
       <section className="panel">

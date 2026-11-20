@@ -707,7 +707,12 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
               linked?.coach ? (
                 <details className="report-details" open>
                   <summary>Relatório do treinador sobre esta partida</summary>
-                  <CoachReport coach={linked.coach} onMoveClick={gotoRef} />
+                  <CoachReport
+                    coach={linked.coach}
+                    onMoveClick={gotoRef}
+                    tutorLevel={settings.tutorLevel}
+                    onSpeech={(speech) => linked.coach && onLinkedChange(linked.id, { coach: { ...linked.coach, speech } })}
+                  />
                 </details>
               ) : undefined
             }

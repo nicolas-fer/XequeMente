@@ -45,7 +45,7 @@ Requisitos: Node.js 20+, Rust (stable) e as ferramentas de build do Visual Studi
 - **Modalidades:** bullet (1+0, 2+1), blitz (3+0, 3+2, 5+0), rápida (10+0, 15+10), clássica (30+0) e sem relógio. Cor: brancas, pretas ou aleatória.
 - **Jogador simulado:** o oponente roda num processo separado do Stockfish (1 thread). O tempo de pensamento varia com o relógio, a fase da partida e o tipo de lance (rápido na abertura, em recapturas e lances únicos; demora no meio-jogo; joga no reflexo com pouco tempo). Desiste quando está perdido e aceita empate só quando a posição dele não é melhor.
 - **Pré-lance:** mova suas peças durante o tempo do adversário; o lance sai na hora se for legal. Botão direito cancela.
-- **Pós-jogo:** revisão automática com o motor de análise, classificação dos seus erros (fase, apuro de tempo, tática perdida, material deixado, mate permitido…) e relatório do treinador (IA) com o que foi bem, onde errou e a lição de cada erro.
+- **Pós-jogo:** revisão automática com o motor de análise, classificação dos seus erros (fase, apuro de tempo, tática perdida, material deixado, mate permitido…) e relatório do treinador (IA) com o que foi bem, onde errou e a lição de cada erro. O treinador também **fala** um resumo curto do relatório (voz do Gemini, ou do Windows sem a chave do Gemini).
 
 ## Perfil e memória do treinador
 
