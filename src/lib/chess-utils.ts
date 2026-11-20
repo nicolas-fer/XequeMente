@@ -98,11 +98,20 @@ export interface PositionEval {
   pv: string[];
   /** fim de jogo: vencedor ou empate */
   terminal?: "w" | "b" | "draw";
+  /** avaliação da segunda melhor linha (para reconhecer lances "Ótimos": únicos bons) */
+  alt?: { cp: number | null; mate: number | null } | null;
 }
 
-export function evalFromLine(line: PvLine | undefined, best: string | null): PositionEval | null {
+export function evalFromLine(line: PvLine | undefined, best: string | null, second?: PvLine): PositionEval | null {
   if (!line) return null;
-  return { cp: line.cp, mate: line.mate, best: best ?? line.pv[0] ?? null, depth: line.depth, pv: line.pv };
+  return {
+    cp: line.cp,
+    mate: line.mate,
+    best: best ?? line.pv[0] ?? null,
+    depth: line.depth,
+    pv: line.pv,
+    alt: second ? { cp: second.cp, mate: second.mate } : null,
+  };
 }
 
 export function terminalEval(fen: string): PositionEval | null {
@@ -151,7 +160,14 @@ export function evalWords(e: PositionEval | null | undefined): string {
   return `vantagem decisiva das ${side}`;
 }
 
-export type MoveClass = "best" | "good" | "inaccuracy" | "mistake" | "blunder";
+export type MoveClass = "great" | "best" | "excellent" | "good" | "inaccuracy" | "mistake" | "blunder";
+
+/** Ordem de exibição das categorias (da melhor para a pior). */
+export const CLASS_ORDER: MoveClass[] = ["great", "best", "excellent", "good", "inaccuracy", "mistake", "blunder"];
+
+export function emptyCounts(): Record<MoveClass, number> {
+  return { great: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
+}
 
 export interface MoveReview {
   cls: MoveClass;
@@ -162,7 +178,9 @@ export interface MoveReview {
 }
 
 export const CLASS_INFO: Record<MoveClass, { label: string; symbol: string; color: string }> = {
+  great: { label: "Ótimo", symbol: "!", color: "#749bbf" },
   best: { label: "Melhor lance", symbol: "★", color: "#81b64c" },
+  excellent: { label: "Excelente", symbol: "✔", color: "#96bc4b" },
   good: { label: "Bom", symbol: "✓", color: "#95b776" },
   inaccuracy: { label: "Imprecisão", symbol: "?!", color: "#f7c045" },
   mistake: { label: "Erro", symbol: "?", color: "#e58f2a" },
@@ -200,19 +218,91 @@ export function capturedInfo(fen: string): Record<"w" | "b", { glyphs: string; a
   };
 }
 
-export function reviewMove(move: MoveNode, before: PositionEval | null, after: PositionEval | null): MoveReview | null {
+/** Chance de vitória das brancas como o Lichess usa na precisão: mate (e posição de mate) vale ±1000 centipeões. */
+export function lichessWinPct(e: Pick<PositionEval, "cp" | "mate" | "terminal">): number {
+  let cp: number;
+  if (e.terminal === "draw") cp = 0;
+  else if (e.terminal) cp = e.terminal === "w" ? 1000 : -1000;
+  else if (e.mate !== null && e.mate !== undefined) cp = e.mate > 0 ? 1000 : e.mate < 0 ? -1000 : 0;
+  else cp = e.cp ?? 0;
+  return winPct({ cp, mate: null });
+}
+
+/**
+ * Precisão de um lance a partir da chance de vitória antes e depois (do ponto de vista de quem jogou).
+ * Fórmula do Lichess, incluindo o bônus de +1 pela imprecisão da própria análise.
+ */
+export function moveAccuracy(before: number, after: number): number {
+  if (after >= before) return 100;
+  const raw = 103.1668100711649 * Math.exp(-0.04354415386753951 * (before - after)) - 3.166924740191411;
+  return Math.max(0, Math.min(100, raw + 1));
+}
+
+/**
+ * Classifica um lance como no chess.com, pela perda em "pontos esperados" (aqui, pontos de chance de vitória):
+ * Excelente < 2, Bom 2–5, Imprecisão 5–10, Erro 10–20, Erro grave 20+.
+ * "Melhor" = lance do motor; "Ótimo" = lance do motor quando a segunda opção era bem pior (lance crítico).
+ */
+export function reviewMove(
+  move: MoveNode,
+  before: PositionEval | null,
+  after: PositionEval | null,
+  prev?: MoveNode | null,
+): MoveReview | null {
   if (!before || !after) return null;
-  const wb = move.color === "w" ? winPct(before) : 100 - winPct(before);
-  const wa = move.color === "w" ? winPct(after) : 100 - winPct(after);
+  const forMover = (e: Pick<PositionEval, "cp" | "mate" | "terminal">) => (move.color === "w" ? winPct(e) : 100 - winPct(e));
+  const wb = forMover(before);
+  const wa = forMover(after);
   const loss = Math.max(0, wb - wa);
   let cls: MoveClass;
-  if (before.best && move.uci === before.best) cls = "best";
-  else if (loss >= 30) cls = "blunder";
-  else if (loss >= 20) cls = "mistake";
-  else if (loss >= 10) cls = "inaccuracy";
-  else cls = "good";
-  const accuracy = Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * loss) - 3.1669));
-  return { cls, loss, accuracy, bestUci: before.best, bestSan: uciToSan(move.fenBefore, before.best) };
+  if (before.best && move.uci === before.best) {
+    const altLoss = before.alt ? wb - forMover({ cp: before.alt.cp, mate: before.alt.mate }) : 0;
+    const recapture = !!prev && prev.san.includes("x") && prev.to === move.to;
+    const critical = altLoss >= 15 && !recapture && wb > 8 && wb < 97;
+    cls = critical ? "great" : "best";
+  } else if (loss >= 20) cls = "blunder";
+  else if (loss >= 10) cls = "mistake";
+  else if (loss >= 5) cls = "inaccuracy";
+  else if (loss >= 2) cls = "good";
+  else cls = "excellent";
+  const lw = (e: PositionEval) => (move.color === "w" ? lichessWinPct(e) : 100 - lichessWinPct(e));
+  return { cls, loss, accuracy: moveAccuracy(lw(before), lw(after)), bestUci: before.best, bestSan: uciToSan(move.fenBefore, before.best) };
+}
+
+function stdDev(xs: number[]) {
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
+  return Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length);
+}
+
+/**
+ * Precisão da partida para cada lado, pelo algoritmo do Lichess: cada lance pesa pela volatilidade
+ * da posição (desvio padrão da chance de vitória numa janela) e o resultado é a média entre a média
+ * ponderada e a média harmônica, o que faz os erros graves pesarem mais que numa média simples.
+ */
+export function gameAccuracy(moves: MoveNode[], evals: (PositionEval | null)[]): Record<"w" | "b", number | null> {
+  const n = moves.length;
+  if (!n || evals.length < n + 1 || evals.slice(0, n + 1).some((e) => !e)) return { w: null, b: null };
+  const wp = evals.slice(0, n + 1).map((e) => lichessWinPct(e!));
+  const windowSize = Math.min(8, Math.max(2, Math.floor(n / 10)));
+  const windows: number[][] = [];
+  const first = wp.slice(0, windowSize);
+  for (let k = 0; k < Math.min(windowSize, wp.length) - 2; k++) windows.push(first);
+  for (let i = 0; i + windowSize <= wp.length; i++) windows.push(wp.slice(i, i + windowSize));
+  const weights = windows.map((xs) => Math.min(12, Math.max(0.5, stdDev(xs))));
+  const per: Record<"w" | "b", { acc: number; weight: number }[]> = { w: [], b: [] };
+  moves.forEach((m, i) => {
+    const before = m.color === "w" ? wp[i] : 100 - wp[i];
+    const after = m.color === "w" ? wp[i + 1] : 100 - wp[i + 1];
+    per[m.color].push({ acc: moveAccuracy(before, after), weight: weights[i] ?? 0.5 });
+  });
+  const combine = (xs: { acc: number; weight: number }[]) => {
+    if (!xs.length) return null;
+    const wsum = xs.reduce((s, x) => s + x.weight, 0);
+    const weighted = xs.reduce((s, x) => s + x.acc * x.weight, 0) / wsum;
+    const harmonic = xs.length / xs.reduce((s, x) => s + 1 / Math.max(x.acc, 1e-9), 0);
+    return (weighted + harmonic) / 2;
+  };
+  return { w: combine(per.w), b: combine(per.b) };
 }
 
 // ---------------------------------------------------------------- Editor / FEN
@@ -351,4 +441,29 @@ export function squareOfKingInCheck(fen: string): string | null {
     /* ignora */
   }
   return null;
+}
+
+/**
+ * Encontra na partida o lance citado num texto ("12. Nf3", "7... Bf8") e devolve o ply da posição depois dele.
+ * Usa número + cor; se não bater, procura pelo SAN.
+ */
+export function resolveMoveRef(moves: MoveNode[], moveNumber: number, black: boolean, san: string): number | null {
+  const clean = (x: string) => x.replace(/[+#!?]/g, "");
+  const color = black ? "b" : "w";
+  const byNumber = moves.findIndex((m) => m.color === color && fullmoveOf(m.fenBefore) === moveNumber);
+  if (byNumber >= 0 && clean(moves[byNumber].san) === clean(san)) return byNumber + 1;
+  const bySan = moves.map((m, i) => (clean(m.san) === clean(san) ? i : -1)).filter((i) => i >= 0);
+  if (bySan.length) {
+    // o mais próximo do número citado
+    const target = (moveNumber - 1) * 2 + (black ? 1 : 0);
+    bySan.sort((a, b) => Math.abs(a - target) - Math.abs(b - target));
+    return bySan[0] + 1;
+  }
+  return byNumber >= 0 ? byNumber + 1 : null;
+}
+
+/** Versão enxuta de uma avaliação para guardar no histórico (linha principal curta). */
+export function compactEval(e: PositionEval | null): PositionEval | null {
+  if (!e) return null;
+  return { ...e, pv: e.pv.slice(0, 8) };
 }

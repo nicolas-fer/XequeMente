@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { Flag, Handshake, RotateCcw, Swords, Volume2, VolumeX } from "lucide-react";
 import { api, errorText, nextSearchId, type Settings } from "../lib/api";
-import { CLASS_INFO, START_FEN, capturedInfo, fullmoveOf, makeMove, uciToMove, type MoveClass, type MoveNode } from "../lib/chess-utils";
+import { CLASS_INFO, CLASS_ORDER, START_FEN, compactEval, resolveMoveRef, capturedInfo, fullmoveOf, makeMove, uciToMove, type MoveClass, type MoveNode } from "../lib/chess-utils";
 import { PERSONAS, TIME_CONTROLS, botFor, formatClock, thinkTimeMs, type Bot, type TimeControl } from "../lib/bots";
 import { playMoveSound, sfx, setSoundEnabled, soundEnabled } from "../lib/sound";
 import { evaluateGame, evaluatePosition, formatEta, reviewLimitOf, summarizeFor, type PlayerSummary } from "../lib/review";
@@ -16,14 +16,24 @@ import {
   type ProfileData,
 } from "../lib/profile";
 import { PlayBoard, type Premove } from "./PlayBoard";
-import { CoachBubble, Markdown } from "./TutorChat";
+import { useBoardFit } from "./boardKit";
+import { CoachBubble, Markdown, TutorChat, linkMoves } from "./TutorChat";
+import type { OpenOpts } from "../lib/useGame";
+import { PHASE_LABEL } from "../lib/review";
+
+const POST_QUICK = [
+  { label: "Onde a partida virou?", text: "Em que momento exato a partida virou e o que eu deveria ter jogado ali? Mostre a ideia, não só o lance." },
+  { label: "Como evitar esse erro?", text: "Qual foi o meu erro mais caro nesta partida e que hábito ou checagem teria evitado ele?" },
+  { label: "O que fiz de bom?", text: "O que eu fiz de bom nesta partida e devo continuar fazendo?" },
+  { label: "O que treinar?", text: "Com base nesta partida e no que você já sabe de mim, o que eu devo treinar nesta semana? Seja concreto." },
+];
 
 interface Props {
   settings: Settings;
   engineReady: boolean;
   profile: ProfileData;
   updateProfile: (fn: (p: ProfileData) => ProfileData) => void;
-  onOpenInAnalysis: (startFen: string, moves: MoveNode[], headers: Record<string, string>) => void;
+  onOpenInAnalysis: (startFen: string, moves: MoveNode[], headers: Record<string, string>, opts?: OpenOpts) => void;
 }
 
 type Stage = "setup" | "playing" | "over";
@@ -126,6 +136,8 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
   const [sound, setSound] = useState(soundEnabled());
   const [post, setPost] = useState<PostState | null>(null);
   const [, setTick] = useState(0);
+  // espaço da coluna da barra de avaliação; barras dos jogadores
+  const fit = useBoardFit(38, 112);
 
   const gameRef = useRef<LiveGame | null>(null);
   const clockRef = useRef({ w: 0, b: 0, running: null as "w" | "b" | null, since: 0 });
@@ -304,6 +316,9 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
         mistakes: summary.mistakes,
         avgMoveMs: playerSpent.length ? playerSpent.reduce((a, b) => a + b, 0) / playerSpent.length : null,
         coach: null,
+        evals: evals.map(compactEval),
+        digest: summary.moveDigest,
+        chat: [],
       };
       updateProfile((p) => ({ ...p, games: [record, ...p.games] }));
       setPost({ status: "done", done: 0, total: 0, summary, recordId: record.id, coach: null, coachError: null });
@@ -539,9 +554,10 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
     void finish({ winner: game.playerColor === "w" ? "b" : "w", reason: "abandono" });
   }
 
-  function openInAnalysis() {
+  function openInAnalysis(ply?: number) {
     const game = gameRef.current;
     if (!game) return;
+    const rec = post?.recordId ? profileRef.current.games.find((x) => x.id === post.recordId) : null;
     const me = profileRef.current.playerName || "Você";
     const botLabel = `${game.bot.name} (nível ${game.bot.level})`;
     const r = game.result;
@@ -550,7 +566,42 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       Black: game.playerColor === "b" ? me : botLabel,
       [game.playerColor === "w" ? "BlackElo" : "WhiteElo"]: String(game.bot.elo),
       Result: !r ? "*" : r.winner === null ? "1/2-1/2" : r.winner === "w" ? "1-0" : "0-1",
-    });
+    }, { ply, preReview: rec?.evals ?? null });
+  }
+
+  /** Clique num lance citado pelo treinador: abre a Análise naquela posição. */
+  function openMoveRef(moveNumber: number, black: boolean, san: string) {
+    const game = gameRef.current;
+    if (!game) return;
+    const ply = resolveMoveRef(game.moves, moveNumber, black, san);
+    if (ply !== null) openInAnalysis(ply);
+  }
+
+  /** Contexto da partida terminada para o chat do pós-jogo. */
+  function postGameContext(game: LiveGame, summary: PlayerSummary, coach: CoachGameReport | null): string {
+    const color = game.playerColor === "w" ? "brancas" : "pretas";
+    const res = game.result;
+    const outcome = !res ? "em andamento" : res.winner === null ? "empate" : res.winner === game.playerColor ? "vitória do aluno" : "derrota do aluno";
+    const c = new Chess(game.startFen);
+    game.moves.forEach((m) => c.move({ from: m.from, to: m.to, promotion: m.promotion }));
+    const lines = [
+      `Partida que o aluno acabou de jogar contra ${game.bot.name} (Stockfish nível ${game.bot.level}, ~${game.bot.elo} de Elo), modalidade ${game.tc.label}.`,
+      `O aluno jogou de ${color}. Resultado: ${outcome}${res ? ` (${res.reason})` : ""}.`,
+      `Lances: ${c.pgn().split("\n").filter((l) => !l.startsWith("[")).join(" ").trim()}`,
+      `Precisão do aluno: ${summary.accuracy?.toFixed(1) ?? "?"}% · adversário: ${summary.opponentAccuracy?.toFixed(1) ?? "?"}%.`,
+      "Lances do aluno avaliados pelo Stockfish (avaliação do ponto de vista das brancas):",
+      ...summary.moveDigest,
+      summary.mistakes.length ? "Erros do aluno:" : "O aluno não cometeu erros relevantes.",
+      ...summary.mistakes.map(
+        (m) =>
+          `- ${m.label}: ${m.evalBefore} → ${m.evalAfter}; melhor era ${m.bestSan}${m.line ? ` (linha: ${m.line})` : ""}; fase: ${PHASE_LABEL[m.phase]}; tipo: ${m.tags.join(", ")}`,
+      ),
+    ];
+    if (coach) lines.push(`Relatório que você (treinador) já deu ao aluno sobre esta partida: ${coach.headline}. ${coach.report}`);
+    const memory = profileRef.current.memory;
+    if (memory.length) lines.push(`O que você já sabe sobre o aluno (memória):\n${memory.map((m) => `- ${m}`).join("\n")}`);
+    lines.push("Responda sobre esta partida; use só as variantes do Stockfish acima para lances concretos.");
+    return lines.join("\n");
   }
 
   // ------------------------------------------------------------ render
@@ -658,11 +709,12 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
 
   const summary = post?.summary;
   const record = post?.recordId ? profile.games.find((x) => x.id === post.recordId) : null;
-  const badgeOrder: MoveClass[] = ["best", "good", "inaccuracy", "mistake", "blunder"];
+  const badgeOrder: MoveClass[] = CLASS_ORDER;
 
   return (
     <div className="analysis play">
-      <section className="board-col">
+      <section className="board-col" ref={fit.ref} style={fit.style}>
+        <div className="board-stack">
         <div className="player-bar">
           <BotAvatar bot={g.bot} size={40} />
           <div className="player-info">
@@ -700,6 +752,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
             </div>
           </div>
           <Clock ms={playerMs} running={!r && k.running === g.playerColor} low={playerMs !== null && playerMs < 20_000} />
+        </div>
         </div>
       </section>
 
@@ -793,7 +846,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
               <>
                 <CoachBubble>
                   <strong>{c.headline}</strong>
-                  <Markdown text={c.report} />
+                  <Markdown text={c.report} onMoveClick={openMoveRef} />
                 </CoachBubble>
                 {c.good_moments.length > 0 && (
                   <div className="moments good">
@@ -804,7 +857,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
                           ★
                         </span>
                         <div>
-                          <strong>{m.move}</strong> {m.why}
+                          <strong>{linkMoves(m.move, openMoveRef)}</strong> {m.why}
                         </div>
                       </div>
                     ))}
@@ -819,7 +872,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
                           ?
                         </span>
                         <div>
-                          <strong>{m.move}</strong> {m.what_happened}
+                          <strong>{linkMoves(m.move, openMoveRef)}</strong> {m.what_happened}
                           <div className="lesson">Lição: {m.lesson}</div>
                         </div>
                       </div>
@@ -844,6 +897,27 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
           )}
           {r && post?.status === "done" && !post.coach && !post.coachError && summary && (
             <div className="hint">Configure uma chave de IA para receber o comentário do treinador. A revisão foi salva no seu perfil.</div>
+          )}
+
+          {r && post?.status === "done" && summary && (
+            <div className="postgame-chat">
+              <div className="card-title">Converse com o treinador</div>
+              <TutorChat
+                inline
+                buildContext={() => postGameContext(g, summary, post.coach ?? record?.coach ?? null)}
+                ask={null}
+                providerLabel={settings.provider === "gemini" ? settings.geminiModel : settings.claudeModel}
+                configured={settings.provider === "gemini" ? !!settings.geminiApiKey : !!settings.claudeApiKey}
+                quick={POST_QUICK}
+                intro="Ficou alguma dúvida sobre a partida? Pergunte sobre um lance, um momento ou o que treinar."
+                resetKey={post.recordId ?? g.id}
+                initialMessages={record?.chat}
+                onMessagesChange={(chat) =>
+                  post.recordId && updateProfile((p) => ({ ...p, games: p.games.map((x) => (x.id === post.recordId ? { ...x, chat } : x)) }))
+                }
+                onMoveClick={openMoveRef}
+              />
+            </div>
           )}
 
           <div className="move-card">
@@ -877,7 +951,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
                 <RotateCcw size={20} strokeWidth={2.6} /> Revanche (trocar cores)
               </button>
               <div className="row-buttons equal">
-                <button className="btn-2 labeled" onClick={openInAnalysis}>
+                <button className="btn-2 labeled" onClick={() => openInAnalysis()}>
                   Ver na Análise
                 </button>
                 <button

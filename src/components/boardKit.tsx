@@ -1,5 +1,5 @@
 /** Peças compartilhadas pelos tabuleiros: setas, anotações com botão direito e bolinhas de lances legais. */
-import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import type { Arrow } from "react-chessboard";
 import type { Chess, Square } from "chess.js";
 
@@ -28,6 +28,29 @@ function squareAt(e: MouseEvent<HTMLElement>, orientation: Orientation): string 
   const file = orientation === "white" ? fx : 7 - fx;
   const rank = orientation === "white" ? 7 - fy : fy;
   return `${"abcdefgh"[file]}${rank + 1}`;
+}
+
+/**
+ * Mede a área livre da coluna do tabuleiro e devolve o maior tamanho que cabe (múltiplo de 8, para casas nítidas).
+ * `reserveW`/`reserveH` = espaço dos elementos ao redor (barra de avaliação, barras dos jogadores, botões).
+ */
+export function useBoardFit(reserveW: number, reserveH: number, max = 1600) {
+  // ref por callback: mede também quando a coluna só aparece depois (ex.: ao começar uma partida)
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const [size, setSize] = useState(480);
+  useLayoutEffect(() => {
+    if (!el) return;
+    const measure = () => {
+      if (!el.clientWidth || !el.clientHeight) return; // aba escondida
+      const s = Math.min(el.clientWidth - reserveW, el.clientHeight - reserveH, max);
+      setSize(Math.max(256, Math.floor(s / 8) * 8));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el, reserveW, reserveH, max]);
+  return { ref: setEl, style: { "--board": `${size}px` } as CSSProperties, size };
 }
 
 /** Setas e casas marcadas pelo usuário com o botão direito. Limpa a cada mudança de posição. */

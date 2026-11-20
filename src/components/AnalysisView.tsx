@@ -5,7 +5,11 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil, Plus, R
 import { errorText, type Settings } from "../lib/api";
 import {
   CLASS_INFO,
+  CLASS_ORDER,
   START_FEN,
+  emptyCounts,
+  gameAccuracy,
+  resolveMoveRef,
   capturedInfo,
   evalFromLine,
   evalText,
@@ -27,6 +31,7 @@ import { useLiveEngine } from "../lib/useEngine";
 import { playMoveSound } from "../lib/sound";
 import { evaluateGame, formatEta, reviewLimitOf } from "../lib/review";
 import { BoardView } from "./BoardView";
+import { useBoardFit } from "./boardKit";
 import { EvalBar } from "./EvalBar";
 import { EvalGraph } from "./EvalGraph";
 import { MoveList } from "./MoveList";
@@ -100,17 +105,27 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
   const [ask, setAsk] = useState<TutorAsk | null>(null);
   const [panel, setPanel] = useState<PanelTab>("revisao");
   const cancelReview = useRef(false);
+  // barra de avaliação + espaço; barras dos jogadores + botões de navegação
+  const fit = useBoardFit(38, 172);
 
   const reviewing = review.status === "running";
   const live = useLiveEngine(fen, engineReady && engineOn && active && !reviewing, multipv, engineGen);
 
   useEffect(() => {
     cancelReview.current = true;
-    setReview(emptyReview);
+    const pre = state.preReview;
+    // Partida do histórico: a revisão já vem pronta.
+    if (pre && pre.length === state.moves.length + 1 && pre.every(Boolean))
+      setReview({ status: "done", done: pre.length, total: pre.length, evals: pre });
+    else setReview(emptyReview);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.version]);
 
   const reviews: (MoveReview | null)[] = useMemo(
-    () => state.moves.map((m, i) => (review.evals.length ? reviewMove(m, review.evals[i] ?? null, review.evals[i + 1] ?? null) : null)),
+    () =>
+      state.moves.map((m, i) =>
+        review.evals.length ? reviewMove(m, review.evals[i] ?? null, review.evals[i + 1] ?? null, state.moves[i - 1]) : null,
+      ),
     [state.moves, review.evals],
   );
 
@@ -192,10 +207,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
 
   const stats = useMemo(() => {
     const acc: Record<"w" | "b", number[]> = { w: [], b: [] };
-    const counts: Record<"w" | "b", Record<MoveClass, number>> = {
-      w: { best: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 },
-      b: { best: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 },
-    };
+    const counts: Record<"w" | "b", Record<MoveClass, number>> = { w: emptyCounts(), b: emptyCounts() };
     reviews.forEach((r, i) => {
       if (!r) return;
       const c = state.moves[i].color;
@@ -203,8 +215,10 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
       counts[c][r.cls]++;
     });
     const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
-    return { accW: avg(acc.w), accB: avg(acc.b), counts };
-  }, [reviews, state.moves]);
+    // Precisão da partida pelo algoritmo do Lichess (ponderada pela volatilidade + média harmônica).
+    const game = gameAccuracy(state.moves, review.evals);
+    return { accW: game.w ?? avg(acc.w), accB: game.b ?? avg(acc.b), counts };
+  }, [reviews, state.moves, review.evals]);
 
   const buildContext = useCallback(() => {
     const path = pathMoves(state);
@@ -337,11 +351,12 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
     );
   } else coachText = "Revisão pronta! Navegue pelos lances com ← → e eu comento cada um.";
 
-  const badgeOrder: MoveClass[] = ["best", "good", "inaccuracy", "mistake", "blunder"];
+  const badgeOrder: MoveClass[] = CLASS_ORDER;
 
   return (
     <div className="analysis">
-      <section className="board-col">
+      <section className="board-col" ref={fit.ref} style={fit.style}>
+        <div className="board-stack">
         <PlayerBar name={nameOf(topColor)} rating={eloOf(topColor)} color={topColor} fen={fen} toMove={turn === topColor} />
         <div className="board-row">
           <EvalBar evaluation={engineOn || review.evals.length ? shownEval : null} orientation={orientation} />
@@ -379,6 +394,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
           <button className="btn-2 labeled" onClick={() => game.load(START_FEN)} title="Novo tabuleiro na posição inicial">
             <Plus size={16} strokeWidth={2.6} /> Novo
           </button>
+        </div>
         </div>
       </section>
 
@@ -606,7 +622,16 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
 
         {/* ---------------- Treinador (sempre montado para manter a conversa) */}
         <div className={`panel-body ${panel === "treinador" ? "" : "hidden"}`}>
-          <TutorChat buildContext={buildContext} ask={ask} providerLabel={providerLabel} configured={configured} />
+          <TutorChat
+            buildContext={buildContext}
+            ask={ask}
+            providerLabel={providerLabel}
+            configured={configured}
+            onMoveClick={(n, black, san) => {
+              const p = resolveMoveRef(state.moves, n, black, san);
+              if (p !== null) game.goto({ inVar: false, ply: p });
+            }}
+          />
         </div>
       </section>
     </div>

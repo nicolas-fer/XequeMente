@@ -20,6 +20,13 @@ export interface TutorAsk {
   display: string;
 }
 
+/** Mensagem guardada (ex.: chat do pós-jogo salvo no histórico da partida). */
+export interface StoredChatMsg {
+  role: "user" | "assistant";
+  display: string;
+  apiContent: string;
+}
+
 interface ChatMsg {
   id: string;
   role: "user" | "assistant";
@@ -34,7 +41,23 @@ interface Props {
   ask: TutorAsk | null;
   providerLabel: string;
   configured: boolean;
+  /** atalhos de pergunta (padrão: os da análise de posição) */
+  quick?: { label: string; text: string }[];
+  /** mensagem inicial do treinador */
+  intro?: string;
+  /** sem rolagem própria: cresce dentro do painel (ex.: pós-jogo) */
+  inline?: boolean;
+  /** quando muda, a conversa recomeça (com `initialMessages`) */
+  resetKey?: string | number;
+  /** conversa salva para retomar */
+  initialMessages?: StoredChatMsg[];
+  /** chamada quando uma resposta termina, com a conversa completa (para salvar) */
+  onMessagesChange?: (messages: StoredChatMsg[]) => void;
+  /** clique num lance citado */
+  onMoveClick?: MoveClickHandler;
 }
+
+const toChat = (list?: StoredChatMsg[]): ChatMsg[] => (list ?? []).map((m) => ({ ...m, id: crypto.randomUUID() }));
 
 const QUICK = [
   { label: "Explique a posição", text: "Explique esta posição: quem está melhor, por quê, e quais são os planos para cada lado." },
@@ -43,35 +66,63 @@ const QUICK = [
   { label: "Ameaças", text: "Quais são as ameaças imediatas na posição (minhas e do adversário)? Tem alguma tática no ar?" },
 ];
 
-function inline(text: string): ReactNode[] {
+/** Clique num lance citado pelo treinador ("12. Nf3", "7... Bf8"). */
+export type MoveClickHandler = (moveNumber: number, black: boolean, san: string) => void;
+
+const MOVE_REF = /\b(\d{1,3})\.(\.\.|…)?\s?(O-O-O|O-O|[KQRBN]?[a-h]?[1-8]?x?[a-h][1-8](?:=[QRBN])?)([+#]?)/g;
+
+/** Transforma lances citados no texto em links clicáveis. */
+export function linkMoves(text: string, onMove?: MoveClickHandler, keyBase = 0): ReactNode[] {
+  if (!onMove) return [text];
+  const out: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  MOVE_REF.lastIndex = 0;
+  while ((m = MOVE_REF.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const num = parseInt(m[1], 10);
+    const black = !!m[2];
+    const san = m[3];
+    out.push(
+      <button key={`mv${keyBase}-${m.index}`} className="move-link" title="Ver esta posição na Análise" onClick={() => onMove(num, black, san)}>
+        {m[0]}
+      </button>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+function inline(text: string, onMove?: MoveClickHandler): ReactNode[] {
   const out: ReactNode[] = [];
   const re = /(\*\*[^*]+\*\*|`[^`]+`|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let k = 0;
   while ((m = re.exec(text))) {
-    if (m.index > last) out.push(text.slice(last, m.index));
+    if (m.index > last) out.push(...linkMoves(text.slice(last, m.index), onMove, k++));
     const t = m[0];
-    if (t.startsWith("**")) out.push(<strong key={k++}>{t.slice(2, -2)}</strong>);
+    if (t.startsWith("**")) out.push(<strong key={k++}>{linkMoves(t.slice(2, -2), onMove, k++)}</strong>);
     else if (t.startsWith("`")) out.push(<code key={k++}>{t.slice(1, -1)}</code>);
-    else out.push(<em key={k++}>{t.slice(1, -1)}</em>);
+    else out.push(<em key={k++}>{linkMoves(t.slice(1, -1), onMove, k++)}</em>);
     last = m.index + t.length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(...linkMoves(text.slice(last), onMove, k++));
   return out;
 }
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, onMoveClick }: { text: string; onMoveClick?: MoveClickHandler }) {
   const blocks: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let para: string[] = [];
   const flushPara = () => {
-    if (para.length) blocks.push(<p key={blocks.length}>{para.map((l, i) => <Fragment key={i}>{i > 0 && <br />}{inline(l)}</Fragment>)}</p>);
+    if (para.length) blocks.push(<p key={blocks.length}>{para.map((l, i) => <Fragment key={i}>{i > 0 && <br />}{inline(l, onMoveClick)}</Fragment>)}</p>);
     para = [];
   };
   const flushList = () => {
     if (list) {
-      const items = list.items.map((it, i) => <li key={i}>{inline(it)}</li>);
+      const items = list.items.map((it, i) => <li key={i}>{inline(it, onMoveClick)}</li>);
       blocks.push(list.ordered ? <ol key={blocks.length}>{items}</ol> : <ul key={blocks.length}>{items}</ul>);
     }
     list = null;
@@ -84,7 +135,7 @@ export function Markdown({ text }: { text: string }) {
     if (head) {
       flushPara();
       flushList();
-      blocks.push(<h4 key={blocks.length}>{inline(head[1])}</h4>);
+      blocks.push(<h4 key={blocks.length}>{inline(head[1], onMoveClick)}</h4>);
     } else if (bullet || num) {
       flushPara();
       const ordered = !!num;
@@ -107,8 +158,20 @@ export function Markdown({ text }: { text: string }) {
   return <div className="md">{blocks}</div>;
 }
 
-export function TutorChat({ buildContext, ask, providerLabel, configured }: Props) {
-  const [messages, setMessages] = useState<ChatMsg[]>([]);
+export function TutorChat({
+  buildContext,
+  ask,
+  providerLabel,
+  configured,
+  quick = QUICK,
+  intro,
+  inline = false,
+  resetKey,
+  initialMessages,
+  onMessagesChange,
+  onMoveClick,
+}: Props) {
+  const [messages, setMessages] = useState<ChatMsg[]>(() => toChat(initialMessages));
   const [input, setInput] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -118,8 +181,23 @@ export function TutorChat({ buildContext, ask, providerLabel, configured }: Prop
   messagesRef.current = messages;
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
-  }, [messages]);
+    if (inline) {
+      // no modo embutido quem rola é o painel: leva a última mensagem para a vista
+      const last = scrollRef.current?.lastElementChild as HTMLElement | null;
+      if (messages.length) last?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    } else scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [messages, inline]);
+
+  const firstReset = useRef(true);
+  useEffect(() => {
+    if (firstReset.current) {
+      firstReset.current = false;
+      return;
+    }
+    setMessages(toChat(initialMessages));
+    setError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resetKey]);
 
   async function send(text: string, display?: string) {
     const question = text.trim();
@@ -145,9 +223,13 @@ export function TutorChat({ buildContext, ask, providerLabel, configured }: Prop
     });
     try {
       await api.tutorChat(requestId, history);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === requestId ? { ...m, streaming: false, apiContent: m.display || "(sem resposta)" } : m)),
-      );
+      setMessages((prev) => {
+        const next = prev.map((m) => (m.id === requestId ? { ...m, streaming: false, apiContent: m.display || "(sem resposta)" } : m));
+        onMessagesChange?.(
+          next.filter((m) => !m.failed && !m.streaming).map(({ role, display, apiContent }) => ({ role, display, apiContent })),
+        );
+        return next;
+      });
     } catch (e) {
       setError(errorText(e));
       setMessages((prev) =>
@@ -168,21 +250,21 @@ export function TutorChat({ buildContext, ask, providerLabel, configured }: Prop
   }, [ask]);
 
   return (
-    <div className="tutor">
+    <div className={`tutor ${inline ? "inline" : ""}`}>
       <div className="chat-scroll" ref={scrollRef}>
         {!configured && (
           <CoachBubble>Para conversar comigo, configure a chave de API do Claude ou do Gemini na aba Configurações.</CoachBubble>
         )}
         {configured && messages.length === 0 && (
           <CoachBubble>
-            Olá! Sou o seu treinador. Pergunte qualquer coisa sobre a posição do tabuleiro: eu recebo os lances e a análise do
-            Stockfish junto com a sua pergunta.
+            {intro ??
+              "Olá! Sou o seu treinador. Pergunte qualquer coisa sobre a posição do tabuleiro: eu recebo os lances e a análise do Stockfish junto com a sua pergunta."}
           </CoachBubble>
         )}
         {messages.map((m) =>
           m.role === "assistant" ? (
             <div key={m.id} className={m.failed ? "failed" : ""}>
-              <CoachBubble typing={m.streaming && !m.display}>{m.display ? <Markdown text={m.display} /> : null}</CoachBubble>
+              <CoachBubble typing={m.streaming && !m.display}>{m.display ? <Markdown text={m.display} onMoveClick={onMoveClick} /> : null}</CoachBubble>
             </div>
           ) : (
             <div key={m.id} className={`user-msg ${m.failed ? "failed" : ""}`}>
@@ -194,7 +276,7 @@ export function TutorChat({ buildContext, ask, providerLabel, configured }: Prop
       </div>
       <div className="chat-bottom">
         <div className="quick">
-          {QUICK.map((q) => (
+          {quick.map((q) => (
             <button key={q.label} className="chip" disabled={!!busyId || !configured} onClick={() => send(q.text, q.label)}>
               {q.label}
             </button>
@@ -237,7 +319,13 @@ export function TutorChat({ buildContext, ask, providerLabel, configured }: Prop
         <div className="chat-meta">
           <span>{providerLabel}</span>
           {messages.length > 0 && !busyId && (
-            <button className="link small" onClick={() => setMessages([])}>
+            <button
+              className="link small"
+              onClick={() => {
+                setMessages([]);
+                onMessagesChange?.([]);
+              }}
+            >
               Nova conversa
             </button>
           )}

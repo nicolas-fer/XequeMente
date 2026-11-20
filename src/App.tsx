@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import { preloadSounds } from "./lib/sound";
-import { Download, LayoutGrid, Search, Settings as SettingsIcon, Swords, UserRound, type LucideIcon } from "lucide-react";
+import { Download, History, LayoutGrid, Search, Settings as SettingsIcon, Swords, UserRound, type LucideIcon } from "lucide-react";
 import { api, errorText, type EngineInfo, type Settings } from "./lib/api";
 import { useGame } from "./lib/useGame";
 import type { MoveNode } from "./lib/chess-utils";
@@ -12,14 +12,17 @@ import { ImportView } from "./components/ImportView";
 import { SettingsView } from "./components/SettingsView";
 import { PlayView } from "./components/PlayView";
 import { ProfileView } from "./components/ProfileView";
+import { HistoryView } from "./components/HistoryView";
+import type { OpenOpts } from "./lib/useGame";
 import { EMPTY_PROFILE, loadProfile, saveProfile, type ProfileData } from "./lib/profile";
 import logo from "./assets/brand/logo.png";
 import "./App.css";
 
-type Tab = "jogar" | "analise" | "editor" | "importar" | "perfil" | "config";
+type Tab = "jogar" | "partidas" | "analise" | "editor" | "importar" | "perfil" | "config";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "jogar", label: "Jogar", icon: Swords },
+  { id: "partidas", label: "Partidas", icon: History },
   { id: "analise", label: "Análise", icon: Search },
   { id: "editor", label: "Editor", icon: LayoutGrid },
   { id: "importar", label: "Importar", icon: Download },
@@ -39,6 +42,7 @@ export default function App() {
   const [profile, setProfile] = useState<ProfileData>(EMPTY_PROFILE);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
 
   useEffect(() => {
     getVersion()
@@ -95,9 +99,13 @@ export default function App() {
     game.load(fen);
     setTab("analise");
   };
-  const openInAnalysis = (startFen: string, moves: MoveNode[], headers: Record<string, string>) => {
-    game.load(startFen, moves, headers);
+  const openInAnalysis = (startFen: string, moves: MoveNode[], headers: Record<string, string>, opts?: OpenOpts) => {
+    game.load(startFen, moves, headers, false, opts ?? {});
     setTab("analise");
+  };
+  const openHistory = (id: string) => {
+    setHistoryId(id);
+    setTab("partidas");
   };
   const editFen = (fen: string, notes?: string[]) => {
     setEditorReq({ key: Date.now(), fen, notes });
@@ -140,6 +148,16 @@ export default function App() {
             onOpenInAnalysis={openInAnalysis}
           />
         </div>
+        <div className={tab === "partidas" ? "view" : "view hidden"}>
+          <HistoryView
+            settings={settings}
+            profile={profile}
+            updateProfile={updateProfile}
+            selectedId={historyId}
+            onSelect={setHistoryId}
+            onOpenInAnalysis={openInAnalysis}
+          />
+        </div>
         <div className={tab === "analise" ? "view" : "view hidden"}>
           <AnalysisView
             game={game}
@@ -164,7 +182,7 @@ export default function App() {
           />
         </div>
         <div className={tab === "perfil" ? "view" : "view hidden"}>
-          <ProfileView settings={settings} profile={profile} updateProfile={updateProfile} onOpenInAnalysis={openInAnalysis} />
+          <ProfileView settings={settings} profile={profile} updateProfile={updateProfile} onOpenGame={openHistory} />
         </div>
         <div className={tab === "config" ? "view" : "view hidden"}>
           <SettingsView

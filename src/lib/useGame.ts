@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useReducer } from "react";
-import { START_FEN, type MoveNode } from "./chess-utils";
+import { START_FEN, type MoveNode, type PositionEval } from "./chess-utils";
 
 export interface Variation {
   /** número de lances da linha principal antes da variante */
@@ -20,10 +20,20 @@ export interface GameState {
   cursor: Cursor;
   /** muda a cada partida carregada (zera revisão) */
   version: number;
+  /** revisão já feita (ex.: partida do histórico): a Análise mostra sem recalcular */
+  preReview?: (PositionEval | null)[] | null;
 }
 
 type Action =
-  | { type: "load"; startFen: string; moves: MoveNode[]; headers: Record<string, string>; atEnd?: boolean }
+  | {
+      type: "load";
+      startFen: string;
+      moves: MoveNode[];
+      headers: Record<string, string>;
+      atEnd?: boolean;
+      ply?: number;
+      preReview?: (PositionEval | null)[] | null;
+    }
   | { type: "play"; move: MoveNode }
   | { type: "goto"; cursor: Cursor }
   | { type: "step"; delta: number }
@@ -54,8 +64,9 @@ function reducer(s: GameState, a: Action): GameState {
         moves: a.moves,
         headers: a.headers,
         variation: null,
-        cursor: { inVar: false, ply: a.atEnd ? a.moves.length : 0 },
+        cursor: { inVar: false, ply: a.ply !== undefined ? Math.max(0, Math.min(a.moves.length, a.ply)) : a.atEnd ? a.moves.length : 0 },
         version: s.version + 1,
+        preReview: a.preReview ?? null,
       };
     case "play": {
       const { cursor } = s;
@@ -132,8 +143,13 @@ export function useGame() {
   }, [state]);
 
   const load = useCallback(
-    (startFen: string, moves: MoveNode[] = [], headers: Record<string, string> = {}, atEnd = false) =>
-      dispatch({ type: "load", startFen, moves, headers, atEnd }),
+    (
+      startFen: string,
+      moves: MoveNode[] = [],
+      headers: Record<string, string> = {},
+      atEnd = false,
+      opts: { ply?: number; preReview?: (PositionEval | null)[] | null } = {},
+    ) => dispatch({ type: "load", startFen, moves, headers, atEnd, ...opts }),
     [],
   );
   const play = useCallback((move: MoveNode) => dispatch({ type: "play", move }), []);
@@ -147,3 +163,9 @@ export function useGame() {
 }
 
 export type GameApi = ReturnType<typeof useGame>;
+
+/** Opções ao abrir uma partida na Análise. */
+export interface OpenOpts {
+  ply?: number;
+  preReview?: (PositionEval | null)[] | null;
+}

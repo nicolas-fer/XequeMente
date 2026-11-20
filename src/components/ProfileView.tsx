@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { Brain, Clock3, Crosshair, Lightbulb, Sparkles, Target, ThumbsUp, Trash2, TrendingUp, Wrench, Zap } from "lucide-react";
 import { api, errorText, type Settings } from "../lib/api";
-import { makeMove, type MoveNode } from "../lib/chess-utils";
 import { PHASE_LABEL, type Phase } from "../lib/review";
 import {
   PROFILE_SCHEMA,
@@ -20,7 +19,8 @@ interface Props {
   settings: Settings;
   profile: ProfileData;
   updateProfile: (fn: (p: ProfileData) => ProfileData) => void;
-  onOpenInAnalysis: (startFen: string, moves: MoveNode[], headers: Record<string, string>) => void;
+  /** abre a partida na aba Partidas */
+  onOpenGame: (id: string) => void;
 }
 
 /** Dicas gerais de método (valem para qualquer nível). */
@@ -208,7 +208,7 @@ function AccuracyChart({ games }: { games: GameRecord[] }) {
   );
 }
 
-export function ProfileView({ settings, profile, updateProfile, onOpenInAnalysis }: Props) {
+export function ProfileView({ settings, profile, updateProfile, onOpenGame }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState(profile.playerName);
@@ -233,24 +233,6 @@ export function ProfileView({ settings, profile, updateProfile, onOpenInAnalysis
     } finally {
       setBusy(false);
     }
-  }
-
-  function openGame(g: GameRecord) {
-    const moves: MoveNode[] = [];
-    let fen = g.startFen;
-    for (const u of g.uci) {
-      const m = makeMove(fen, u.slice(0, 2), u.slice(2, 4), u[4]);
-      if (!m) break;
-      moves.push(m);
-      fen = m.fenAfter;
-    }
-    const me = profile.playerName || "Você";
-    const bot = `${g.botName} (nível ${g.level})`;
-    onOpenInAnalysis(g.startFen, moves, {
-      White: g.playerColor === "w" ? me : bot,
-      Black: g.playerColor === "b" ? me : bot,
-      Result: g.result === "draw" ? "1/2-1/2" : (g.result === "win") === (g.playerColor === "w") ? "1-0" : "0-1",
-    });
   }
 
   const outdated = analysis && (analysis.gamesCount ?? 0) < profile.games.length;
@@ -437,7 +419,7 @@ export function ProfileView({ settings, profile, updateProfile, onOpenInAnalysis
           ) : (
             <div className="games-list">
               {profile.games.slice(0, 40).map((g) => (
-                <button key={g.id} className="game-row" onClick={() => openGame(g)} title="Abrir na Análise">
+                <button key={g.id} className="game-row" onClick={() => onOpenGame(g.id)} title="Ver a partida">
                   <span className={`result-dot ${g.result}`}>{g.result === "win" ? "V" : g.result === "loss" ? "D" : "E"}</span>
                   <span className="game-main">
                     <span>

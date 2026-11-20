@@ -1,6 +1,7 @@
 /** Perfil do jogador: histórico, memória do treinador e prompts das análises. */
 import { api } from "./api";
-import type { MoveClass } from "./chess-utils";
+import { makeMove, type MoveClass, type MoveNode, type PositionEval } from "./chess-utils";
+import type { StoredChatMsg } from "../components/TutorChat";
 import { PHASE_LABEL, type MistakeInfo, type Phase } from "./review";
 
 export interface CoachGameReport {
@@ -32,6 +33,12 @@ export interface GameRecord {
   mistakes: MistakeInfo[];
   avgMoveMs: number | null;
   coach: CoachGameReport | null;
+  /** revisão do Stockfish (uma avaliação por posição), para abrir na Análise sem recalcular */
+  evals?: (PositionEval | null)[] | null;
+  /** lances do aluno em texto compacto (para o treinador) */
+  digest?: string[];
+  /** conversa com o treinador sobre esta partida */
+  chat?: StoredChatMsg[];
 }
 
 export interface CoachProfileAnalysis {
@@ -408,5 +415,58 @@ export function tipRelevance(games: GameRecord[]): Record<TipId, TipRelevance> {
       score: slowGames * 1.5 + flagged,
       reason: slowGames ? `ritmo lento em ${plural(slowGames, "partida", "partidas")}` : "",
     },
+  };
+}
+
+// ---------------------------------------------------------------- Contexto do chat de uma partida salva
+
+export function recordContext(g: GameRecord, memory: string[]): string {
+  const color = g.playerColor === "w" ? "brancas" : "pretas";
+  const outcome = g.result === "win" ? "vitória do aluno" : g.result === "loss" ? "derrota do aluno" : "empate";
+  const lines = [
+    `Partida do aluno contra ${g.botName} (Stockfish nível ${g.level}, ~${g.botElo} de Elo), modalidade ${g.timeControl.label}, em ${new Date(g.date).toLocaleDateString("pt-BR")}.`,
+    `O aluno jogou de ${color}. Resultado: ${outcome} (${g.reason}).`,
+    `Lances: ${g.pgn.split("\n").filter((l) => !l.startsWith("[")).join(" ").trim()}`,
+    `Precisão do aluno: ${g.accuracy?.toFixed(1) ?? "?"}% · adversário: ${g.opponentAccuracy?.toFixed(1) ?? "?"}%.`,
+  ];
+  if (g.digest?.length) lines.push("Lances do aluno avaliados pelo Stockfish (ponto de vista das brancas):", ...g.digest);
+  if (g.mistakes.length) {
+    lines.push("Erros do aluno:");
+    g.mistakes.forEach((m) =>
+      lines.push(
+        `- ${m.label}: ${m.evalBefore} → ${m.evalAfter}; melhor era ${m.bestSan}${m.line ? ` (linha: ${m.line})` : ""}; fase: ${PHASE_LABEL[m.phase]}; tipo: ${m.tags.join(", ")}`,
+      ),
+    );
+  }
+  if (g.coach) lines.push(`Relatório que você (treinador) já deu sobre esta partida: ${g.coach.headline}. ${g.coach.report}`);
+  if (memory.length) lines.push(`O que você já sabe sobre o aluno (memória):\n${memory.map((m) => `- ${m}`).join("\n")}`);
+  lines.push("Responda sobre esta partida; use só as variantes do Stockfish acima para lances concretos.");
+  return lines.join("\n");
+}
+
+// ---------------------------------------------------------------- Partida salva -> Análise
+
+/** Reconstrói os lances de uma partida salva. */
+export function movesOf(g: GameRecord): MoveNode[] {
+  const moves: MoveNode[] = [];
+  let fen = g.startFen;
+  for (const u of g.uci) {
+    const m = makeMove(fen, u.slice(0, 2), u.slice(2, 4), u[4]);
+    if (!m) break;
+    moves.push(m);
+    fen = m.fenAfter;
+  }
+  return moves;
+}
+
+/** Cabeçalhos PGN para abrir a partida na Análise. */
+export function headersOf(g: GameRecord, playerName: string): Record<string, string> {
+  const me = playerName || "Você";
+  const bot = `${g.botName} (nível ${g.level})`;
+  return {
+    White: g.playerColor === "w" ? me : bot,
+    Black: g.playerColor === "b" ? me : bot,
+    [g.playerColor === "w" ? "BlackElo" : "WhiteElo"]: String(g.botElo),
+    Result: g.result === "draw" ? "1/2-1/2" : (g.result === "win") === (g.playerColor === "w") ? "1-0" : "0-1",
   };
 }

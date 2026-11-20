@@ -6,6 +6,23 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.3.0] - 2026-11-20
+
+### Corrigido
+- No pós-jogo, as caixas "O que você fez bem" e "Onde errou e a lição" ficavam espremidas e escondiam o texto.
+
+### Alterado
+- **Tabuleiro responsivo**: nas abas Jogar e Análise, o tabuleiro mede a área livre e ocupa o máximo que cabe (antes era limitado a 800 px); o painel lateral também cresce em telas largas (até 560 px). Numa tela 2560×1440, o tabuleiro de jogo passou de 480 px para 1224 px.
+- **Precisão da partida igual à do Lichess**: cada lance pesa pela volatilidade da posição e o resultado combina a média ponderada com a média harmônica (erros graves pesam mais), com o bônus de +1 por lance e mate valendo ±1000 centipeões. Validado contra 6 partidas analisadas pelo próprio Lichess: os 12 números bateram exatamente.
+- **Classificação dos lances no estilo do chess.com**, pela perda de chance de vitória: Excelente (menos de 2 pontos), Bom (2–5), Imprecisão (5–10), Erro (10–20) e Erro grave (20 ou mais).
+
+### Adicionado
+- Aba **Partidas**: histórico com filtro (vitórias, derrotas, empates) e, para cada partida, a posição final, precisão, contagem por categoria, lances com selo (clique abre na Análise), relatório do treinador, erros apontados pelo Stockfish, **chat com o treinador salvo na partida** (dá para continuar a conversa depois) e exclusão. Partidas sem relatório ganham o botão "Gerar relatório".
+- A revisão do Stockfish fica guardada em cada partida: "Abrir na Análise" mostra a revisão na hora, sem recalcular.
+- **Chat com o treinador no pós-jogo**, logo depois do relatório, com atalhos ("Onde a partida virou?", "Como evitar esse erro?", "O que treinar?").
+- **Lances citados pelo treinador são clicáveis** ("2... d5", "7. h6") no relatório, nas listas e nos chats: abrem a Análise naquela posição.
+- Categorias **Ótimo** (o melhor lance numa posição em que a segunda opção era bem pior; recapturas óbvias não contam) e **Excelente**. A revisão passa a pedir as 2 melhores linhas ao Stockfish para identificar os lances críticos.
+
 ## [0.2.1] - 2026-11-20
 
 ### Corrigido
@@ -50,7 +67,8 @@ Primeira versão.
 - **Configuração completa do Stockfish**: download do executável oficial, threads, hash, limites da análise ao vivo, critério da revisão e todas as opções UCI anunciadas pelo motor.
 - Instaladores para Windows (NSIS e MSI).
 
-[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.2.1...HEAD
+[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nicolas-fer/XequeMente/releases/tag/v0.1.0

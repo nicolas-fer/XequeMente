@@ -1,7 +1,9 @@
 import { api, nextSearchId, type Settings } from "./api";
 import {
   CLASS_INFO,
+  emptyCounts,
   evalFromLine,
+  gameAccuracy,
   evalText,
   fenToBoardMap,
   moveLabel,
@@ -42,8 +44,10 @@ export function formatEta(ms: number | null): string {
 export async function evaluatePosition(fen: string, limit: ReviewLimit): Promise<PositionEval | null> {
   const term = terminalEval(fen);
   if (term) return term;
-  const r = await api.engineEval(nextSearchId(), fen, limit, 1);
-  return evalFromLine(r.lines[0], r.bestMove);
+  // 2 linhas: a segunda serve para reconhecer lances "Ótimos" (únicos bons).
+  const r = await api.engineEval(nextSearchId(), fen, limit, 2);
+  const lines = [...r.lines].sort((a, b) => a.multipv - b.multipv);
+  return evalFromLine(lines[0], r.bestMove, lines[1]);
 }
 
 /** Avalia todas as posições da partida com o motor de análise. Devolve null se cancelado. */
@@ -152,14 +156,14 @@ export function summarizeFor(
   clocks: (number | null)[] = [],
   baseMs: number | null = null,
 ): PlayerSummary {
-  const counts: Record<MoveClass, number> = { best: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
+  const counts: Record<MoveClass, number> = emptyCounts();
   const acc: number[] = [];
   const oppAcc: number[] = [];
   const byPhase: Record<Phase, number[]> = { opening: [], middlegame: [], endgame: [] };
   const mistakes: MistakeInfo[] = [];
   const moveDigest: string[] = [];
   moves.forEach((m, i) => {
-    const r = reviewMove(m, evals[i] ?? null, evals[i + 1] ?? null);
+    const r = reviewMove(m, evals[i] ?? null, evals[i + 1] ?? null, moves[i - 1]);
     if (!r) return;
     if (m.color !== color) {
       oppAcc.push(r.accuracy);
@@ -194,5 +198,15 @@ export function summarizeFor(
     const v = avg(byPhase[p]);
     if (v !== null) phaseAcc[p] = Math.round(v * 10) / 10;
   });
-  return { accuracy: avg(acc), opponentAccuracy: avg(oppAcc), counts, phaseAcc, mistakes, moveDigest };
+  // Precisão da partida pelo algoritmo do Lichess (ponderada + harmônica); por fase, média simples.
+  const game = gameAccuracy(moves, evals);
+  const other = color === "w" ? "b" : "w";
+  return {
+    accuracy: game[color] ?? avg(acc),
+    opponentAccuracy: game[other] ?? avg(oppAcc),
+    counts,
+    phaseAcc,
+    mistakes,
+    moveDigest,
+  };
 }
