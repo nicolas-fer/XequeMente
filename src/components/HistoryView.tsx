@@ -2,14 +2,17 @@ import { useMemo, useState } from "react";
 import { Chessboard } from "react-chessboard";
 import { ExternalLink, Sparkles, Trash2 } from "lucide-react";
 import { api, errorText, type Settings } from "../lib/api";
-import { CLASS_INFO, CLASS_ORDER, emptyCounts, fullmoveOf, resolveMoveRef, reviewMove, type MoveNode } from "../lib/chess-utils";
+import { CLASS_INFO, CLASS_ORDER, emptyCounts, fullmoveOf, moveLabel, resolveMoveRef, reviewMove, type MoveNode } from "../lib/chess-utils";
 import { botFor } from "../lib/bots";
 import { PHASE_LABEL } from "../lib/review";
+import { openingFamily, openingLabel } from "../lib/openings";
+import { OpeningLine } from "./MoveList";
 import {
   GAME_REPORT_SCHEMA,
   coachSystem,
   gameReportPrompt,
   headersOf,
+  recordOpening,
   movesOf,
   recordContext,
   type CoachGameReport,
@@ -59,6 +62,7 @@ function GameDetail({
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const moves = useMemo(() => movesOf(g), [g]);
+  const opening = recordOpening(g);
   const bot = botFor(g.level);
   const finalFen = moves.length ? moves[moves.length - 1].fenAfter : g.startFen;
   const aiConfigured = settings.provider === "gemini" ? !!settings.geminiApiKey : !!settings.claudeApiKey;
@@ -141,6 +145,14 @@ function GameDetail({
           <div className="muted small">
             {new Date(g.date).toLocaleString("pt-BR", { dateStyle: "long", timeStyle: "short" })} · {g.timeControl.label} · {g.plies} lances
           </div>
+          {opening.opening && (
+            <div className="history-opening">
+              <OpeningLine track={opening} />
+              {opening.outOfBookAt !== null && (
+                <span className="muted small">saiu da teoria em {linkMoves(moveLabel(moves[opening.outOfBookAt]), openRef)}</span>
+              )}
+            </div>
+          )}
         </div>
         <div className={`result-pill ${g.result}`}>
           {resultLabel(g)}
@@ -316,7 +328,20 @@ function GameDetail({
 
 export function HistoryView({ settings, profile, updateProfile, selectedId, onSelect, onOpenInAnalysis }: Props) {
   const [filter, setFilter] = useState<Filter>("all");
-  const games = profile.games.filter((g) => filter === "all" || g.result === filter);
+  const [family, setFamily] = useState("");
+  const families = useMemo(() => {
+    const count = new Map<string, number>();
+    profile.games.forEach((g) => {
+      const o = recordOpening(g).opening;
+      if (o) count.set(openingFamily(o.name), (count.get(openingFamily(o.name)) ?? 0) + 1);
+    });
+    return [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [profile.games]);
+  const games = profile.games.filter(
+    (g) =>
+      (filter === "all" || g.result === filter) &&
+      (!family || openingFamily(recordOpening(g).opening?.name ?? "") === family),
+  );
   const selected = profile.games.find((g) => g.id === selectedId) ?? games[0] ?? null;
 
   return (
@@ -337,6 +362,16 @@ export function HistoryView({ settings, profile, updateProfile, selectedId, onSe
             </button>
           ))}
         </div>
+        {families.length > 0 && (
+          <select className="history-opening-filter" value={family} onChange={(e) => setFamily(e.target.value)} title="Filtrar por abertura">
+            <option value="">Todas as aberturas</option>
+            {families.map(([f, n]) => (
+              <option key={f} value={f}>
+                {f} ({n})
+              </option>
+            ))}
+          </select>
+        )}
         {games.length === 0 ? (
           <div className="muted small">{profile.games.length ? "Nenhuma partida neste filtro." : "Nenhuma partida ainda. Vá em Jogar!"}</div>
         ) : (
@@ -353,6 +388,11 @@ export function HistoryView({ settings, profile, updateProfile, selectedId, onSe
                     <span>
                       {g.botName} <span className="muted">· {g.timeControl.label}</span>
                     </span>
+                    {recordOpening(g).opening && (
+                      <span className="muted small" title={openingLabel(recordOpening(g).opening)}>
+                        {recordOpening(g).opening!.name}
+                      </span>
+                    )}
                     <span className="muted small">
                       {new Date(g.date).toLocaleDateString("pt-BR")} · {g.accuracy !== null ? `${g.accuracy.toFixed(0)}%` : "—"}
                       {g.chat?.length ? " · com conversa" : ""}

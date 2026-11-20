@@ -3,6 +3,7 @@ import { api } from "./api";
 import { makeMove, type MoveClass, type MoveNode, type PositionEval } from "./chess-utils";
 import type { StoredChatMsg } from "../components/TutorChat";
 import { PHASE_LABEL, type MistakeInfo, type Phase } from "./review";
+import { openingContext, openingFamily, trackOpening, type OpeningTrack } from "./openings";
 
 export interface CoachGameReport {
   headline: string;
@@ -163,6 +164,74 @@ export function computeStats(games: GameRecord[]): ProfileStats {
   };
 }
 
+// ---------------------------------------------------------------- Aberturas
+
+const openingCache = new Map<string, OpeningTrack>();
+
+/** Abertura de uma partida salva (calculada a partir dos lances; fica em cache por partida). */
+export function recordOpening(g: GameRecord): OpeningTrack {
+  let t = openingCache.get(g.id);
+  if (!t) {
+    t = trackOpening(movesOf(g));
+    openingCache.set(g.id, t);
+  }
+  return t;
+}
+
+export interface OpeningStat {
+  family: string;
+  color: "w" | "b";
+  games: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  /** pontos por partida (vitória 1, empate 0,5), de 0 a 1 */
+  score: number;
+  avgAccuracy: number | null;
+  /** nomes completos (variantes) vistos nesta família */
+  variations: string[];
+}
+
+/** Desempenho do aluno por família de abertura e cor. Mais jogadas primeiro. */
+export function computeOpeningStats(games: GameRecord[]): OpeningStat[] {
+  const map = new Map<string, OpeningStat & { accs: number[] }>();
+  for (const g of games) {
+    const o = recordOpening(g).opening;
+    if (!o) continue;
+    const family = openingFamily(o.name);
+    const k = `${g.playerColor}|${family}`;
+    let st = map.get(k);
+    if (!st) {
+      st = { family, color: g.playerColor, games: 0, wins: 0, draws: 0, losses: 0, score: 0, avgAccuracy: null, variations: [], accs: [] };
+      map.set(k, st);
+    }
+    st.games++;
+    if (g.result === "win") st.wins++;
+    else if (g.result === "draw") st.draws++;
+    else st.losses++;
+    if (g.accuracy !== null) st.accs.push(g.accuracy);
+    if (!st.variations.includes(o.name)) st.variations.push(o.name);
+  }
+  return [...map.values()]
+    .map(({ accs, ...st }) => ({
+      ...st,
+      score: (st.wins + st.draws / 2) / st.games,
+      avgAccuracy: accs.length ? accs.reduce((a, b) => a + b, 0) / accs.length : null,
+    }))
+    .sort((a, b) => b.games - a.games || a.family.localeCompare(b.family));
+}
+
+function openingStatsBlock(games: GameRecord[]) {
+  const st = computeOpeningStats(games).slice(0, 10);
+  if (!st.length) return "(sem dados)";
+  return st
+    .map(
+      (o) =>
+        `- ${o.family}, de ${o.color === "w" ? "brancas" : "pretas"}: ${o.games} partida(s), ${o.wins}V ${o.draws}E ${o.losses}D, precisão média ${o.avgAccuracy?.toFixed(0) ?? "?"}%`,
+    )
+    .join("\n");
+}
+
 // ---------------------------------------------------------------- Prompts
 
 const LEVEL_TEXT: Record<string, string> = {
@@ -250,6 +319,7 @@ export function gameReportPrompt(args: {
     `Adversário: ${g.botName} (Stockfish nível ${g.level}, ~${g.botElo} de Elo aproximado)`,
     `Modalidade: ${g.timeControl.label}${g.timeControl.base ? ` (${g.timeControl.base / 60} min + ${g.timeControl.inc}s)` : ""}`,
     `O aluno jogou de ${color}. Resultado: ${g.result === "win" ? "vitória" : g.result === "loss" ? "derrota" : "empate"} (${g.reason}).`,
+    openingContext(movesOf(g)),
     `Precisão do aluno: ${g.accuracy?.toFixed(1) ?? "?"}% · precisão do adversário: ${g.opponentAccuracy?.toFixed(1) ?? "?"}%`,
     g.avgMoveMs !== null ? `Tempo médio por lance do aluno: ${(g.avgMoveMs / 1000).toFixed(1)}s` : "",
     `Precisão por fase: ${Object.entries(g.phaseAcc).map(([p, v]) => `${PHASE_LABEL[p as Phase]} ${v.toFixed(0)}%`).join(", ") || "—"}`,
@@ -335,7 +405,8 @@ export function profilePrompt(p: ProfileData, s: ProfileStats) {
         .slice(0, 3)
         .map((m) => `${m.label} (${m.tags.join(", ")}; ${PHASE_LABEL[m.phase].toLowerCase()})`)
         .join("; ");
-      return `- ${g.result === "win" ? "V" : g.result === "loss" ? "D" : "E"} vs ${g.botName} ~${g.botElo}, ${g.timeControl.label}, de ${g.playerColor === "w" ? "brancas" : "pretas"}, precisão ${g.accuracy?.toFixed(0) ?? "?"}%${top ? `; erros: ${top}` : ""}${g.coach ? `; resumo: ${g.coach.headline}` : ""}`;
+      const op = recordOpening(g).opening;
+      return `- ${g.result === "win" ? "V" : g.result === "loss" ? "D" : "E"} vs ${g.botName} ~${g.botElo}, ${g.timeControl.label}, de ${g.playerColor === "w" ? "brancas" : "pretas"}${op ? `, ${op.name}` : ""}, precisão ${g.accuracy?.toFixed(0) ?? "?"}%${top ? `; erros: ${top}` : ""}${g.coach ? `; resumo: ${g.coach.headline}` : ""}`;
     })
     .join("\n");
   return [
@@ -352,6 +423,9 @@ export function profilePrompt(p: ProfileData, s: ProfileStats) {
     "",
     "## Partidas recentes",
     gameLines || "(nenhuma)",
+    "",
+    "## Desempenho por abertura (catálogo do Lichess)",
+    openingStatsBlock(p.games),
     "",
     "## Memória que você tem do aluno",
     memoryBlock(p.memory),
@@ -426,6 +500,7 @@ export function recordContext(g: GameRecord, memory: string[]): string {
   const lines = [
     `Partida do aluno contra ${g.botName} (Stockfish nível ${g.level}, ~${g.botElo} de Elo), modalidade ${g.timeControl.label}, em ${new Date(g.date).toLocaleDateString("pt-BR")}.`,
     `O aluno jogou de ${color}. Resultado: ${outcome} (${g.reason}).`,
+    openingContext(movesOf(g)),
     `Lances: ${g.pgn.split("\n").filter((l) => !l.startsWith("[")).join(" ").trim()}`,
     `Precisão do aluno: ${g.accuracy?.toFixed(1) ?? "?"}% · adversário: ${g.opponentAccuracy?.toFixed(1) ?? "?"}%.`,
   ];

@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Brain, Clock3, Crosshair, Lightbulb, Sparkles, Target, ThumbsUp, Trash2, TrendingUp, Wrench, Zap } from "lucide-react";
+import { BookOpen, Brain, Clock3, Crosshair, Lightbulb, Sparkles, Target, ThumbsUp, Trash2, TrendingUp, Wrench, Zap } from "lucide-react";
 import { api, errorText, type Settings } from "../lib/api";
 import { PHASE_LABEL, type Phase } from "../lib/review";
 import {
   PROFILE_SCHEMA,
   coachSystem,
   computeStats,
+  computeOpeningStats,
   profilePrompt,
   tipRelevance,
   type CoachProfileAnalysis,
@@ -213,6 +214,7 @@ export function ProfileView({ settings, profile, updateProfile, onOpenGame }: Pr
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState(profile.playerName);
   const stats = useMemo(() => computeStats(profile.games), [profile.games]);
+  const openingStats = useMemo(() => computeOpeningStats(profile.games), [profile.games]);
   const analysis = profile.coachAnalysis;
   const aiConfigured = settings.provider === "gemini" ? !!settings.geminiApiKey : !!settings.claudeApiKey;
   const maxTag = stats.tagCounts[0]?.[1] ?? 1;
@@ -324,6 +326,45 @@ export function ProfileView({ settings, profile, updateProfile, onOpenGame }: Pr
           </div>
         </section>
       </div>
+
+      {openingStats.length > 0 && (
+        <section className="panel">
+          <div className="panel-title">
+            <BookOpen size={18} /> Suas aberturas
+            <span className="spacer" />
+            <span className="muted small">pelo catálogo do Lichess</span>
+          </div>
+          <div className="opening-table">
+            <div className="opening-row head">
+              <span>Abertura</span>
+              <span>Cor</span>
+              <span>Partidas</span>
+              <span>V / E / D</span>
+              <span>Aproveitamento</span>
+              <span>Precisão</span>
+            </div>
+            {openingStats.slice(0, 10).map((o) => (
+              <div className="opening-row" key={`${o.color}-${o.family}`} title={o.variations.join("\n")}>
+                <span className="opening-family">{o.family}</span>
+                <span>
+                  <span className={`color-chip ${o.color}`} /> {o.color === "w" ? "Brancas" : "Pretas"}
+                </span>
+                <span>{o.games}</span>
+                <span>
+                  <span className="w">{o.wins}</span>/<span className="d">{o.draws}</span>/<span className="l">{o.losses}</span>
+                </span>
+                <span className="opening-score">
+                  <span className="bar">
+                    <span style={{ width: `${o.score * 100}%` }} className={o.score >= 0.5 ? "" : "low"} />
+                  </span>
+                  {Math.round(o.score * 100)}%
+                </span>
+                <span>{pct(o.avgAccuracy)}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="panel coach-panel">
         <div className="panel-title">

@@ -16,6 +16,8 @@ import {
   type ProfileData,
 } from "../lib/profile";
 import { PlayBoard, type Premove } from "./PlayBoard";
+import { OpeningLine } from "./MoveList";
+import { openingContext, trackOpening } from "../lib/openings";
 import { useBoardFit } from "./boardKit";
 import { CoachBubble, Markdown, TutorChat, linkMoves } from "./TutorChat";
 import type { OpenOpts } from "../lib/useGame";
@@ -606,6 +608,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
     const lines = [
       `Partida que o aluno acabou de jogar contra ${game.bot.name} (Stockfish nível ${game.bot.level}, ~${game.bot.elo} de Elo), modalidade ${game.tc.label}.`,
       `O aluno jogou de ${color}. Resultado: ${outcome}${res ? ` (${res.reason})` : ""}.`,
+      openingContext(game.moves),
       `Lances: ${c.pgn().split("\n").filter((l) => !l.startsWith("[")).join(" ").trim()}`,
       `Precisão do aluno: ${summary.accuracy?.toFixed(1) ?? "?"}% · adversário: ${summary.opponentAccuracy?.toFixed(1) ?? "?"}%.`,
       "Lances do aluno avaliados pelo Stockfish (avaliação do ponto de vista das brancas):",
@@ -941,6 +944,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
 
           <div className="move-card">
             <div className="card-title">Lances</div>
+            <OpeningLine track={trackOpening(g.moves)} />
             <div className="move-list">
               {rows.length === 0 && <div className="muted small">{g.playerColor === "w" ? "Você começa." : `${g.bot.name} começa.`}</div>}
               {rows.map((row) => (

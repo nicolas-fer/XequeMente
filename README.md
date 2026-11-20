@@ -34,6 +34,7 @@ Requisitos: Node.js 20+, Rust (stable) e as ferramentas de build do Visual Studi
 
 - **Análise:** tabuleiro com arrastar ou clicar, setas do melhor lance, barra de avaliação, MultiPV de 1 a 5 linhas em SAN (clique numa linha para jogar o lance), variantes, atalhos ← → Home End e F (girar o tabuleiro).
 - **Revisão da partida:** avalia todas as posições numa profundidade configurável, classifica cada lance (melhor, imprecisão ?!, erro ?, erro grave ??) pela perda de chance de vitória (fórmula do Lichess), mostra a precisão de cada lado e um gráfico clicável, e tem o botão *Ver melhor lance*.
+- **Aberturas:** nome e código ECO da abertura acima dos lances (Análise, Jogar e Partidas), selo *Teórico* nos lances de livro, marcação de onde a partida saiu da teoria e desempenho por abertura no Perfil. Usa o catálogo de aberturas do Lichess, embutido no app (funciona offline) e indexado por posição, então transposições também são reconhecidas.
 - **Tutor:** chat em streaming. Cada pergunta leva junto FEN, lances, último lance com a classificação e as linhas do Stockfish. Tem atalhos (explicar a posição, dica sem entregar o lance, ameaças) e pode gerar um resumo da partida com padrões de erro e o que treinar.
 - **Editor de posição:** paleta de peças, arrastar, botão direito para apagar, vez de jogar, roques, validação (reis, peões na 1ª/8ª fileira, lado que não joga em xeque).
 - **Importar:** PGN (texto ou arquivo, inclusive com várias partidas), FEN, e **print ou foto** (Ctrl+V, arrastar ou arquivo). O LLM transcreve o tabuleiro, o app monta o FEN e abre no editor para você revisar.
@@ -84,4 +85,5 @@ As chaves de API ficam salvas em texto puro no `settings.json` da sua pasta de u
 ## Créditos
 
 - [Stockfish](https://stockfishchess.org/) (GPL-3.0), baixado à parte pelo próprio app, não distribuído junto.
+- [Catálogo de aberturas do Lichess](https://github.com/lichess-org/chess-openings) (domínio público / CC0), em `data/lichess-openings`; `node scripts/build-openings.mjs` regenera o índice `src/data/openings.json`.
 - [chess.js](https://github.com/jhlywa/chess.js) e [react-chessboard](https://github.com/Clariity/react-chessboard).

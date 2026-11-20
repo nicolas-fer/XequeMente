@@ -1,5 +1,6 @@
 import { Chess, validateFen, type Square } from "chess.js";
 import type { BoardRead, PvLine } from "./api";
+import { isBookPosition } from "./openings";
 
 export const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -160,13 +161,13 @@ export function evalWords(e: PositionEval | null | undefined): string {
   return `vantagem decisiva das ${side}`;
 }
 
-export type MoveClass = "great" | "best" | "excellent" | "good" | "inaccuracy" | "mistake" | "blunder";
+export type MoveClass = "great" | "best" | "excellent" | "good" | "book" | "inaccuracy" | "mistake" | "blunder";
 
 /** Ordem de exibição das categorias (da melhor para a pior). */
-export const CLASS_ORDER: MoveClass[] = ["great", "best", "excellent", "good", "inaccuracy", "mistake", "blunder"];
+export const CLASS_ORDER: MoveClass[] = ["great", "best", "excellent", "good", "book", "inaccuracy", "mistake", "blunder"];
 
 export function emptyCounts(): Record<MoveClass, number> {
-  return { great: 0, best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
+  return { great: 0, best: 0, excellent: 0, good: 0, book: 0, inaccuracy: 0, mistake: 0, blunder: 0 };
 }
 
 export interface MoveReview {
@@ -182,6 +183,8 @@ export const CLASS_INFO: Record<MoveClass, { label: string; symbol: string; colo
   best: { label: "Melhor lance", symbol: "★", color: "#81b64c" },
   excellent: { label: "Excelente", symbol: "✔", color: "#96bc4b" },
   good: { label: "Bom", symbol: "✓", color: "#95b776" },
+  // símbolo vazio: o selo desenha um livro via CSS (.badge:empty)
+  book: { label: "Teórico", symbol: "", color: "#a88865" },
   inaccuracy: { label: "Imprecisão", symbol: "?!", color: "#f7c045" },
   mistake: { label: "Erro", symbol: "?", color: "#e58f2a" },
   blunder: { label: "Erro grave", symbol: "??", color: "#ca3431" },
@@ -242,6 +245,7 @@ export function moveAccuracy(before: number, after: number): number {
  * Classifica um lance como no chess.com, pela perda em "pontos esperados" (aqui, pontos de chance de vitória):
  * Excelente < 2, Bom 2–5, Imprecisão 5–10, Erro 10–20, Erro grave 20+.
  * "Melhor" = lance do motor; "Ótimo" = lance do motor quando a segunda opção era bem pior (lance crítico).
+ * "Teórico" = lance que leva a uma posição do catálogo de aberturas (tem prioridade, como no chess.com).
  */
 export function reviewMove(
   move: MoveNode,
@@ -255,7 +259,8 @@ export function reviewMove(
   const wa = forMover(after);
   const loss = Math.max(0, wb - wa);
   let cls: MoveClass;
-  if (before.best && move.uci === before.best) {
+  if (isBookPosition(move.fenAfter)) cls = "book";
+  else if (before.best && move.uci === before.best) {
     const altLoss = before.alt ? wb - forMover({ cp: before.alt.cp, mate: before.alt.mate }) : 0;
     const recapture = !!prev && prev.san.includes("x") && prev.to === move.to;
     const critical = altLoss >= 15 && !recapture && wb > 8 && wb < 97;

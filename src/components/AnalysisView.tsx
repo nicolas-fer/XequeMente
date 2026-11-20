@@ -37,6 +37,7 @@ import { useBoardFit } from "./boardKit";
 import { EvalBar } from "./EvalBar";
 import { EvalGraph } from "./EvalGraph";
 import { MoveList } from "./MoveList";
+import { openingContext, openingLabel, trackOpening } from "../lib/openings";
 import { CoachBubble, TutorChat, type TutorAsk } from "./TutorChat";
 
 interface Props {
@@ -154,6 +155,8 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
   const liveEval = evalFromLine(live.lines[0], null);
   const shownEval: PositionEval | null = terminalEval(fen) ?? liveEval ?? currentReviewEval;
   const lastReview = onMainline && ply > 0 ? reviews[ply - 1] : null;
+  /** abertura até a posição do tabuleiro (segue variantes também) */
+  const openingTrack = useMemo(() => trackOpening(pathMoves(state)), [state]);
 
   /** lance (UCI) da linha do motor sob o mouse: destacado no tabuleiro */
   const [hoverMove, setHoverMove] = useState<string | null>(null);
@@ -260,6 +263,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
     if (mySide !== "both") lines.push(`O aluno jogou com as ${mySide === "w" ? "brancas" : "pretas"}.`);
     if (memory.length) lines.push(`O que você já sabe sobre o aluno (memória de partidas anteriores):\n${memory.map((m) => `- ${m}`).join("\n")}`);
     if (state.startFen !== START_FEN) lines.push(`Posição inicial (FEN): ${state.startFen}`);
+    else lines.push(openingContext(path));
     lines.push(`Lances até a posição atual: ${formatMoves(path) || "(nenhum lance)"}`);
     lines.push(`Posição atual (FEN): ${fen}`);
     lines.push(`Vez de jogar: ${turnOf(fen) === "w" ? "brancas" : "pretas"}`);
@@ -307,7 +311,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
   function askGameReview() {
     const items: string[] = [];
     reviews.forEach((r, i) => {
-      if (!r || r.cls === "best" || r.cls === "good") return;
+      if (!r || r.cls === "best" || r.cls === "good" || r.cls === "book") return;
       const m = state.moves[i];
       if (mySide !== "both" && m.color !== mySide) return;
       const before = review.evals[i];
@@ -327,6 +331,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
       .join(", ");
     const text = [
       `Revisei a partida inteira com o Stockfish (${acc}). Partida completa: ${formatMoves(state.moves)}`,
+      openingContext(state.moves),
       "",
       `Lances imprecisos ${who}:`,
       items.length ? items.join("\n") : "(nenhum erro relevante)",
@@ -371,8 +376,18 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
     const info = CLASS_INFO[lastReview.cls];
     coachText = (
       <>
-        <strong>{moveLabel(lastMove)}</strong> foi <span style={{ color: info.color, fontWeight: 800 }}>{info.label.toLowerCase()}</span>.
-        {lastReview.cls !== "best" && lastReview.bestSan && (
+        <strong>{moveLabel(lastMove)}</strong>{" "}
+        {lastReview.cls === "book" ? (
+          <>
+            é <span style={{ color: info.color, fontWeight: 800 }}>teórico</span>
+            {openingTrack.opening ? <>: {openingLabel(openingTrack.opening)}</> : null}.
+          </>
+        ) : (
+          <>
+            foi <span style={{ color: info.color, fontWeight: 800 }}>{info.label.toLowerCase()}</span>.
+          </>
+        )}
+        {lastReview.cls !== "best" && lastReview.cls !== "book" && lastReview.bestSan && (
           <>
             {" "}O Stockfish preferia <strong>{lastReview.bestSan}</strong>.
           </>
@@ -537,6 +552,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
               onGoto={(inVar, p) => game.goto({ inVar, ply: p })}
               onExitVariation={game.exitVariation}
               onPromoteVariation={game.promoteVariation}
+              opening={openingTrack}
             />
           </div>
           <div className="panel-footer">
@@ -646,6 +662,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, l
               onGoto={(inVar, p) => game.goto({ inVar, ply: p })}
               onExitVariation={game.exitVariation}
               onPromoteVariation={game.promoteVariation}
+              opening={openingTrack}
             />
           </div>
         </div>

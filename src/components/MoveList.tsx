@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { CLASS_INFO, fullmoveOf, type MoveNode, type MoveReview } from "../lib/chess-utils";
 import type { GameState } from "../lib/useGame";
+import type { OpeningTrack } from "../lib/openings";
 
 interface Props {
   state: GameState;
@@ -8,6 +9,8 @@ interface Props {
   onGoto: (inVar: boolean, ply: number) => void;
   onExitVariation: () => void;
   onPromoteVariation: () => void;
+  /** abertura até a posição atual (catálogo do Lichess) */
+  opening?: OpeningTrack | null;
 }
 
 function MoveCell({ m, active, review, onClick }: { m: MoveNode; active: boolean; review?: MoveReview | null; onClick: () => void }) {
@@ -24,7 +27,19 @@ function MoveCell({ m, active, review, onClick }: { m: MoveNode; active: boolean
   );
 }
 
-export function MoveList({ state, reviews, onGoto, onExitVariation, onPromoteVariation }: Props) {
+/** Nome da abertura (ECO + nome), com o livro aceso enquanto a posição é teórica. */
+export function OpeningLine({ track }: { track: OpeningTrack }) {
+  if (!track.opening) return null;
+  return (
+    <div className={`opening-line ${track.inBook ? "in-book" : ""}`} title={track.inBook ? "Posição teórica (catálogo de aberturas do Lichess)" : "A partida já saiu da teoria"}>
+      <span className="badge mini book-badge" style={{ background: track.inBook ? "#a88865" : "var(--muted)" }} />
+      <span className="opening-eco">{track.opening.eco}</span>
+      <span className="opening-name">{track.opening.name}</span>
+    </div>
+  );
+}
+
+export function MoveList({ state, reviews, onGoto, onExitVariation, onPromoteVariation, opening }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const { moves, cursor, variation } = state;
 
@@ -49,6 +64,7 @@ export function MoveList({ state, reviews, onGoto, onExitVariation, onPromoteVar
   return (
     <div className="move-card">
       <div className="card-title">Lances</div>
+      {opening?.opening && <OpeningLine track={opening} />}
       <div className="move-list" ref={ref}>
         {moves.length === 0 && <div className="muted small">Faça lances no tabuleiro ou importe uma partida.</div>}
         {rows.map((r) => (
