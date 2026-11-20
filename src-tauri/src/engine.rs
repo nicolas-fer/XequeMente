@@ -531,9 +531,11 @@ pub async fn engine_eval(
     {
         let mut guard = state.inner.lock().await;
         let engine = guard.as_mut().ok_or("Motor não iniciado.")?;
-        let go = match (movetime, depth) {
-            (Some(ms), _) => format!("go movetime {}\n", ms.clamp(10, 600_000)),
-            (None, Some(d)) => format!("go depth {}\n", d.clamp(1, 99)),
+        // Profundidade e tempo juntos: o motor para no que vier primeiro.
+        let go = match (depth, movetime) {
+            (Some(d), Some(ms)) => format!("go depth {} movetime {}\n", d.clamp(1, 99), ms.clamp(10, 600_000)),
+            (None, Some(ms)) => format!("go movetime {}\n", ms.clamp(10, 600_000)),
+            (Some(d), None) => format!("go depth {}\n", d.clamp(1, 99)),
             (None, None) => "go depth 16\n".to_string(),
         };
         begin_search(engine, id, &fen, multipv, &go, false, Some(tx), None).await?;

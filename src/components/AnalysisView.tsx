@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Arrow } from "react-chessboard";
 import { Chess } from "chess.js";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pencil, Plus, RotateCcw, Star, User } from "lucide-react";
-import { api, errorText, nextSearchId, type Settings } from "../lib/api";
+import { errorText, type Settings } from "../lib/api";
 import {
   CLASS_INFO,
   START_FEN,
@@ -25,6 +25,7 @@ import {
 import { pathMoves, type GameApi } from "../lib/useGame";
 import { useLiveEngine } from "../lib/useEngine";
 import { playMoveSound } from "../lib/sound";
+import { evaluateGame, formatEta, reviewLimitOf } from "../lib/review";
 import { BoardView } from "./BoardView";
 import { EvalBar } from "./EvalBar";
 import { EvalGraph } from "./EvalGraph";
@@ -48,6 +49,7 @@ interface ReviewState {
   total: number;
   evals: (PositionEval | null)[];
   error?: string;
+  eta?: number | null;
 }
 
 type PanelTab = "revisao" | "analise" | "treinador";
@@ -168,25 +170,21 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
   async function runReview() {
     if (!engineReady) return;
     cancelReview.current = false;
-    const reviewLimit = settings.reviewMode === "time" ? { movetime: settings.reviewMs } : { depth: settings.reviewDepth };
-    const positions = [state.startFen, ...state.moves.map((m) => m.fenAfter)];
-    const evals: (PositionEval | null)[] = new Array(positions.length).fill(null);
-    setReview({ status: "running", done: 0, total: positions.length, evals: [] });
+    const total = state.moves.length + 1;
+    setReview({ status: "running", done: 0, total, evals: [] });
     try {
-      for (let i = 0; i < positions.length; i++) {
-        if (cancelReview.current) {
-          setReview(emptyReview);
-          return;
-        }
-        const term = terminalEval(positions[i]);
-        if (term) evals[i] = term;
-        else {
-          const r = await api.engineEval(nextSearchId(), positions[i], reviewLimit, 1);
-          evals[i] = evalFromLine(r.lines[0], r.bestMove);
-        }
-        setReview({ status: "running", done: i + 1, total: positions.length, evals: [...evals] });
+      const evals = await evaluateGame(
+        state.startFen,
+        state.moves,
+        reviewLimitOf(settings),
+        (partial, done, t, eta) => setReview({ status: "running", done, total: t, evals: partial, eta }),
+        () => cancelReview.current,
+      );
+      if (!evals) {
+        setReview(emptyReview);
+        return;
       }
-      setReview({ status: "done", done: positions.length, total: positions.length, evals });
+      setReview({ status: "done", done: total, total, evals });
     } catch (e) {
       setReview({ status: "idle", done: 0, total: 0, evals: [], error: errorText(e) });
     }
@@ -410,7 +408,7 @@ export function AnalysisView({ game, settings, engineReady, engineGen, memory, a
                   <div style={{ width: `${(review.done / Math.max(1, review.total)) * 100}%` }} />
                 </div>
                 <span className="small muted">
-                  {review.done}/{review.total}
+                  {review.done}/{review.total} {formatEta(review.eta ?? null)}
                 </span>
                 <button className="link" onClick={() => (cancelReview.current = true)}>
                   Cancelar

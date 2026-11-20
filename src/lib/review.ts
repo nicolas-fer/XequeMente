@@ -18,29 +18,64 @@ import {
 export type Phase = "opening" | "middlegame" | "endgame";
 export const PHASE_LABEL: Record<Phase, string> = { opening: "Abertura", middlegame: "Meio-jogo", endgame: "Final" };
 
-export function reviewLimitOf(s: Settings) {
-  return s.reviewMode === "time" ? { movetime: s.reviewMs } : { depth: s.reviewDepth };
+export interface ReviewLimit {
+  depth?: number;
+  movetime?: number;
+}
+
+/** Limite por posição na revisão. Por profundidade, com teto de tempo opcional (para no que vier primeiro). */
+export function reviewLimitOf(s: Settings): ReviewLimit {
+  if (s.reviewMode === "time") return { movetime: s.reviewMs };
+  return s.reviewCapMs > 0 ? { depth: s.reviewDepth, movetime: s.reviewCapMs } : { depth: s.reviewDepth };
+}
+
+/** "~40 s", "~2 min" — tempo restante estimado. */
+export function formatEta(ms: number | null): string {
+  if (ms === null || !Number.isFinite(ms)) return "";
+  if (ms < 8_000) return "quase pronto";
+  if (ms < 60_000) return `~${Math.round(ms / 5000) * 5} s restantes`;
+  const min = Math.round(ms / 60_000);
+  return `~${min} min restante${min > 1 ? "s" : ""}`;
+}
+
+/** Avalia uma única posição (usado na análise em segundo plano durante a partida). */
+export async function evaluatePosition(fen: string, limit: ReviewLimit): Promise<PositionEval | null> {
+  const term = terminalEval(fen);
+  if (term) return term;
+  const r = await api.engineEval(nextSearchId(), fen, limit, 1);
+  return evalFromLine(r.lines[0], r.bestMove);
 }
 
 /** Avalia todas as posições da partida com o motor de análise. Devolve null se cancelado. */
 export async function evaluateGame(
   startFen: string,
   moves: MoveNode[],
-  limit: { depth?: number; movetime?: number },
-  onProgress: (evals: (PositionEval | null)[], done: number, total: number) => void,
+  limit: ReviewLimit,
+  onProgress: (evals: (PositionEval | null)[], done: number, total: number, etaMs: number | null) => void,
   cancelled: () => boolean,
+  /** posições já avaliadas (ex.: durante a partida), pela FEN */
+  cache?: Map<string, PositionEval>,
 ): Promise<(PositionEval | null)[] | null> {
   const positions = [startFen, ...moves.map((m) => m.fenAfter)];
   const evals: (PositionEval | null)[] = new Array(positions.length).fill(null);
+  let spent = 0;
+  let computed = 0;
   for (let i = 0; i < positions.length; i++) {
     if (cancelled()) return null;
-    const term = terminalEval(positions[i]);
-    if (term) evals[i] = term;
+    const cached = cache?.get(positions[i]);
+    if (cached) evals[i] = cached;
     else {
-      const r = await api.engineEval(nextSearchId(), positions[i], limit, 1);
-      evals[i] = evalFromLine(r.lines[0], r.bestMove);
+      const t0 = performance.now();
+      evals[i] = await evaluatePosition(positions[i], limit);
+      if (!terminalEval(positions[i])) {
+        spent += performance.now() - t0;
+        computed++;
+      }
+      if (evals[i]) cache?.set(positions[i], evals[i]!);
     }
-    onProgress([...evals], i + 1, positions.length);
+    const left = positions.slice(i + 1).filter((f) => !cache?.has(f)).length;
+    const eta = computed ? (spent / computed) * left : null;
+    onProgress([...evals], i + 1, positions.length, eta);
   }
   return evals;
 }

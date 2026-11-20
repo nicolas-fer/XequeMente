@@ -28,6 +28,8 @@ pub struct Settings {
     /// Revisão por "depth" (profundidade fixa) ou "time" (tempo por posição).
     pub review_mode: String,
     pub review_ms: u32,
+    /// Teto de tempo por posição na revisão por profundidade (ms). 0 = sem teto.
+    pub review_cap_ms: u32,
     /// Pede ao motor as chances de vitória/empate/derrota (UCI_ShowWDL).
     pub show_wdl: bool,
     /// Valores de qualquer opção UCI anunciada pelo motor (nome -> valor).
@@ -56,6 +58,7 @@ impl Default for Settings {
             live_seconds: 10,
             review_mode: "depth".into(),
             review_ms: 500,
+            review_cap_ms: 1500,
             show_wdl: true,
             engine_options: BTreeMap::new(),
         }

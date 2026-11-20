@@ -536,7 +536,47 @@ export function SettingsView({ settings, engine, engineError, onSaved, onRestart
               </label>
             )}
           </div>
-          <span className="hint">Profundidade 14–18 serve para treino; mais alto fica mais preciso e mais lento.</span>
+          {form.reviewMode === "depth" && (
+            <div className="field">
+              <span>Tempo máximo por posição</span>
+              <div className="seg">
+                {[
+                  [0, "Sem limite"],
+                  [500, "0,5 s"],
+                  [1000, "1 s"],
+                  [1500, "1,5 s"],
+                  [3000, "3 s"],
+                  [5000, "5 s"],
+                ].map(([ms, label]) => (
+                  <button key={ms} className={form.reviewCapMs === ms ? "active" : ""} onClick={() => set("reviewCapMs", ms as number)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {(() => {
+            // Estimativa para uma partida típica de 40 lances (80 posições), descontando o que já é analisado durante o jogo.
+            const perPos = form.reviewMode === "time" ? form.reviewMs : form.reviewCapMs;
+            const slow = form.reviewMode === "depth" && form.reviewCapMs === 0 && form.reviewDepth >= 20;
+            if (slow)
+              return (
+                <div className="notice">
+                  Profundidade {form.reviewDepth} sem limite de tempo pode levar de vários minutos a mais de uma hora por partida
+                  (algumas posições passam de 1 minuto cada). Escolha um tempo máximo por posição.
+                </div>
+              );
+            if (perPos > 0) {
+              const secs = (perPos * 80) / 1000;
+              return (
+                <span className="hint">
+                  Uma partida de 40 lances leva no máximo ~{secs >= 90 ? `${Math.round(secs / 60)} min` : `${Math.round(secs)} s`} para revisar;
+                  no modo Jogar, a maior parte é analisada durante a própria partida.
+                </span>
+              );
+            }
+            return <span className="hint">Profundidade 14–18 serve para treino; mais alto fica mais preciso e mais lento.</span>;
+          })()}
         </div>
 
         <details className="subsection advanced">

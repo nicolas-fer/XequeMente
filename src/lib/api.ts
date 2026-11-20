@@ -70,6 +70,7 @@ export interface Settings {
   liveSeconds: number;
   reviewMode: "depth" | "time";
   reviewMs: number;
+  reviewCapMs: number;
   showWdl: boolean;
   engineOptions: Record<string, string>;
 }

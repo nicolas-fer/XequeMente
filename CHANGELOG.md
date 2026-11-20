@@ -6,6 +6,15 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.2.1] - 2026-11-20
+
+### Corrigido
+- Revisão da partida muito lenta com profundidade alta (ex.: profundidade 30 levava cerca de 1 hora numa partida de 35 lances). Agora:
+  - a revisão por profundidade tem um **tempo máximo por posição** (padrão 1,5 s; o motor para no que vier primeiro), configurável em Configurações → Revisão;
+  - no modo Jogar, as posições são **analisadas durante a própria partida**, então a revisão do final fica pronta em segundos;
+  - a barra de progresso mostra o **tempo restante estimado**;
+  - Configurações avisa quando a combinação escolhida pode ser lenta e mostra a duração estimada da revisão.
+
 ## [0.2.0] - 2026-11-19
 
 ### Adicionado
@@ -41,6 +50,7 @@ Primeira versão.
 - **Configuração completa do Stockfish**: download do executável oficial, threads, hash, limites da análise ao vivo, critério da revisão e todas as opções UCI anunciadas pelo motor.
 - Instaladores para Windows (NSIS e MSI).
 
-[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.2.0...HEAD
+[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nicolas-fer/XequeMente/releases/tag/v0.1.0

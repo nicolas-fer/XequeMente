@@ -5,7 +5,8 @@ import { api, errorText, nextSearchId, type Settings } from "../lib/api";
 import { CLASS_INFO, START_FEN, capturedInfo, fullmoveOf, makeMove, uciToMove, type MoveClass, type MoveNode } from "../lib/chess-utils";
 import { PERSONAS, TIME_CONTROLS, botFor, formatClock, thinkTimeMs, type Bot, type TimeControl } from "../lib/bots";
 import { playMoveSound, sfx, setSoundEnabled, soundEnabled } from "../lib/sound";
-import { evaluateGame, reviewLimitOf, summarizeFor, type PlayerSummary } from "../lib/review";
+import { evaluateGame, evaluatePosition, formatEta, reviewLimitOf, summarizeFor, type PlayerSummary } from "../lib/review";
+import type { PositionEval } from "../lib/chess-utils";
 import {
   GAME_REPORT_SCHEMA,
   coachSystem,
@@ -52,6 +53,7 @@ interface PostState {
   status: "reviewing" | "coach" | "done" | "no-engine";
   done: number;
   total: number;
+  eta?: number | null;
   summary: PlayerSummary | null;
   recordId: string | null;
   coach: CoachGameReport | null;
@@ -136,6 +138,42 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
   const profileRef = useRef(profile);
   profileRef.current = profile;
   const lastDigest = useRef<{ record: GameRecord; digest: string[] } | null>(null);
+  // Análise em segundo plano durante a partida (o motor de análise fica livre enquanto se joga).
+  const preCache = useRef(new Map<string, PositionEval>());
+  const preQueue = useRef<string[]>([]);
+  const preBusy = useRef(false);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const engineReadyRef = useRef(engineReady);
+  engineReadyRef.current = engineReady;
+
+  const pumpPreAnalysis = useCallback(async () => {
+    if (preBusy.current || !engineReadyRef.current) return;
+    preBusy.current = true;
+    try {
+      while (preQueue.current.length) {
+        const game = gameRef.current;
+        if (!game || game.result) break;
+        const fen = preQueue.current.shift()!;
+        if (preCache.current.has(fen)) continue;
+        const ev = await evaluatePosition(fen, reviewLimitOf(settingsRef.current));
+        // Se a partida acabou no meio, a busca pode ter sido interrompida: não guarda.
+        if (gameRef.current !== game || game.result) break;
+        if (ev) preCache.current.set(fen, ev);
+      }
+    } catch {
+      /* a revisão final cobre o que faltar */
+    } finally {
+      preBusy.current = false;
+    }
+  }, []);
+  const queuePreAnalysis = useCallback(
+    (fen: string) => {
+      preQueue.current.push(fen);
+      void pumpPreAnalysis();
+    },
+    [pumpPreAnalysis],
+  );
 
   const rerender = useCallback(() => setTick((t) => t + 1), []);
   const setPremove = (p: Premove | null) => {
@@ -216,8 +254,9 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
           game.startFen,
           game.moves,
           reviewLimitOf(settings),
-          (_e, done, total) => setPost((p) => (p ? { ...p, done, total } : p)),
+          (_e, done, total, eta) => setPost((p) => (p ? { ...p, done, total, eta } : p)),
           () => gameRef.current !== game,
+          preCache.current,
         );
       } catch (e) {
         setPost((p) => (p ? { ...p, status: "done", coachError: `Revisão falhou: ${errorText(e)}` } : p));
@@ -292,6 +331,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       k.running = m.color === "w" ? "b" : "w";
       k.since = now;
       game.moves = [...game.moves, m];
+      queuePreAnalysis(m.fenAfter);
       game.clockBefore = [...game.clockBefore, before];
       game.spent = [...game.spent, spent];
       playMoveSound(m.san);
@@ -300,7 +340,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       if (end) void finish(end);
       return true;
     },
-    [finish, remaining, rerender],
+    [finish, remaining, rerender, queuePreAnalysis],
   );
 
   const playerMove = useCallback(
@@ -458,6 +498,9 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       drawCooldown.current = 0;
       lastTickSecond.current = null;
       busyRef.current = false;
+      preCache.current = new Map();
+      preQueue.current = [];
+      queuePreAnalysis(START_FEN);
       setPremove(null);
       setPost(null);
       setStage("playing");
@@ -711,7 +754,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
                   <div style={{ width: `${(post.done / Math.max(1, post.total)) * 100}%` }} />
                 </div>
                 <span className="small muted">
-                  {post.done}/{post.total}
+                  {post.done}/{post.total} {formatEta(post.eta ?? null)}
                 </span>
               </div>
             </>
