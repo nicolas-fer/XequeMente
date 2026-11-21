@@ -6,6 +6,11 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.6.1] - 2026-11-20
+
+### Alterado
+- **Sons refeitos** com o modelo mais novo de efeitos sonoros do ElevenLabs (v3), com o prompt seguido à risca (influência 100%) e prompts enriquecidos com detalhes de sound design. Cada som foi escolhido de ouvido entre 6 a 8 versões; o som de vitória continua o anterior. A promoção deixou de ser um brilho "mágico" e virou um toque de madeira como o do lance, com um brilho suave no fim.
+
 ## [0.6.0] - 2026-11-20
 
 ### Adicionado
@@ -118,7 +123,8 @@ Primeira versão.
 - **Configuração completa do Stockfish**: download do executável oficial, threads, hash, limites da análise ao vivo, critério da revisão e todas as opções UCI anunciadas pelo motor.
 - Instaladores para Windows (NSIS e MSI).
 
-[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.6.0...HEAD
+[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.0...v0.5.1
