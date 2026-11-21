@@ -4,6 +4,9 @@ import { gameAccuracy, makeMove, type MoveClass, type MoveNode, type PositionEva
 import type { StoredChatMsg } from "../components/TutorChat";
 import { PHASE_LABEL, type MistakeInfo, type Phase } from "./review";
 import { openingContext, openingFamily, trackOpening, type OpeningTrack } from "./openings";
+import { normalizeDrills, type DrillsState } from "./drills";
+import { stockfishLevelText } from "./bots";
+import { normalizeCoaching, type CoachingState } from "./coaching";
 
 export interface CoachGameReport {
   headline: string;
@@ -44,6 +47,8 @@ export interface GameRecord {
   chat?: StoredChatMsg[];
   /** "lichess" = precisão já calculada pelo algoritmo atual (partidas antigas usavam média simples) */
   accuracyAlgo?: "lichess";
+  /** partida jogada no modo treino (avisos do treinador, lances voltados, dicas) */
+  assisted?: { warnings: number; takebacks: number; hints: number };
 }
 
 export interface CoachProfileAnalysis {
@@ -76,9 +81,13 @@ export interface ProfileData {
   games: GameRecord[];
   memory: string[];
   coachAnalysis: CoachProfileAnalysis | null;
+  /** "Treinar meus erros" (lib/drills.ts) */
+  drills: DrillsState | null;
+  /** adversário que se ajusta e metas semanais (lib/coaching.ts) */
+  coaching: CoachingState | null;
 }
 
-export const EMPTY_PROFILE: ProfileData = { version: 1, playerName: "", games: [], memory: [], coachAnalysis: null };
+export const EMPTY_PROFILE: ProfileData = { version: 1, playerName: "", games: [], memory: [], coachAnalysis: null, drills: null, coaching: null };
 
 export function normalizeProfile(raw: unknown): ProfileData {
   const r = (raw && typeof raw === "object" ? raw : {}) as Partial<ProfileData>;
@@ -88,6 +97,8 @@ export function normalizeProfile(raw: unknown): ProfileData {
     games: Array.isArray(r.games) ? r.games.map((g) => withCurrentAccuracy(g)) : [],
     memory: Array.isArray(r.memory) ? r.memory.filter((m) => typeof m === "string") : [],
     coachAnalysis: r.coachAnalysis ?? null,
+    drills: normalizeDrills(r.drills),
+    coaching: normalizeCoaching(r.coaching),
   };
 }
 
@@ -349,7 +360,7 @@ export function gameReportPrompt(args: {
     "Analise a partida que o aluno acabou de jogar contra o computador.",
     "",
     "## Partida",
-    `Adversário: ${g.botName} (Stockfish nível ${g.level}, ~${g.botElo} de Elo aproximado)`,
+    `Adversário: ${g.botName} (${stockfishLevelText(g.level)}, ~${g.botElo} de Elo aproximado)`,
     `Modalidade: ${g.timeControl.label}${g.timeControl.base ? ` (${g.timeControl.base / 60} min + ${g.timeControl.inc}s)` : ""}`,
     `O aluno jogou de ${color}. Resultado: ${g.result === "win" ? "vitória" : g.result === "loss" ? "derrota" : "empate"} (${g.reason}).`,
     openingContext(movesOf(g)),
@@ -532,7 +543,7 @@ export function recordContext(g: GameRecord, memory: string[]): string {
   const color = g.playerColor === "w" ? "brancas" : "pretas";
   const outcome = g.result === "win" ? "vitória do aluno" : g.result === "loss" ? "derrota do aluno" : "empate";
   const lines = [
-    `Partida do aluno contra ${g.botName} (Stockfish nível ${g.level}, ~${g.botElo} de Elo), modalidade ${g.timeControl.label}, em ${new Date(g.date).toLocaleDateString("pt-BR")}.`,
+    `Partida do aluno contra ${g.botName} (${stockfishLevelText(g.level)}, ~${g.botElo} de Elo), modalidade ${g.timeControl.label}, em ${new Date(g.date).toLocaleDateString("pt-BR")}.`,
     `O aluno jogou de ${color}. Resultado: ${outcome} (${g.reason}).`,
     openingContext(movesOf(g)),
     `Lances: ${g.pgn.split("\n").filter((l) => !l.startsWith("[")).join(" ").trim()}`,

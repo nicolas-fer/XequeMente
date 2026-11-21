@@ -665,6 +665,7 @@ pub async fn opponent_move(
     moves: Vec<String>,
     fen: String,
     movetime: u32,
+    multipv: Option<u32>,
 ) -> Result<SearchResult, String> {
     if moves.iter().any(|m| !m.chars().all(|c| c.is_ascii_alphanumeric()))
         || start_fen.contains(['\n', '\r'])
@@ -677,7 +678,8 @@ pub async fn opponent_move(
         let mut guard = state.opponent.lock().await;
         let engine = guard.as_mut().ok_or("O adversário não foi iniciado.")?;
         let go = format!("go movetime {}\n", movetime.clamp(20, 120_000));
-        begin_search(engine, id, &fen, 1, &go, false, Some(tx), Some((&start_fen, &moves))).await?;
+        // Com MultiPV > 1, o front recebe os melhores candidatos e escolhe um lance mais fraco (níveis negativos).
+        begin_search(engine, id, &fen, multipv.unwrap_or(1), &go, false, Some(tx), Some((&start_fen, &moves))).await?;
     }
     tokio::time::timeout(Duration::from_secs(180), rx)
         .await

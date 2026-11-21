@@ -1,0 +1,184 @@
+/* Aba Treinar: cabeçalho com números, sessão de exercícios e resumo. */
+
+.train-view {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 16px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* ---------- Cabeçalho com os números do dia */
+.train-head {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.train-stat {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  background: var(--bg-deep);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  min-width: 0;
+}
+.train-stat-icon {
+  grid-row: span 2;
+  color: var(--gold);
+  display: inline-flex;
+}
+.train-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.train-stat-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.train-start,
+.train-empty {
+  max-width: 720px;
+}
+.train-start .btn-primary {
+  align-self: flex-start;
+}
+
+/* ---------- Sessão: tabuleiro à esquerda, painel do exercício à direita */
+.train-session {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
+}
+.train-board-col {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.train-board-wrap {
+  width: var(--board);
+}
+.train-side {
+  flex: none;
+  width: clamp(280px, 26vw, 400px);
+  max-height: 100%;
+  overflow-y: auto;
+  min-width: 0;
+}
+.train-progress {
+  font-weight: 700;
+}
+.train-retry {
+  color: var(--gold);
+}
+.train-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+  font-weight: 700;
+  line-height: 1.45;
+}
+.train-notice {
+  margin: 0;
+  font-size: 13px;
+  color: var(--gold);
+  font-weight: 700;
+  line-height: 1.45;
+}
+.train-feedback {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-left: 4px solid var(--muted);
+}
+.train-feedback.ok {
+  border-left-color: var(--green);
+}
+.train-feedback.bad {
+  border-left-color: var(--bad);
+}
+.train-feedback p {
+  margin: 0;
+}
+.train-feedback-title {
+  font-weight: 800;
+  font-size: 14px;
+}
+.train-line {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.train-lesson {
+  background: var(--bg-deep);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.train-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.train-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+}
+
+/* ---------- Resumo da sessão */
+.train-summary {
+  max-width: 560px;
+  margin: 24px auto;
+}
+.train-summary-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+.train-summary-list strong {
+  color: var(--gold);
+}
+.train-summary .btn-primary {
+  align-self: flex-start;
+}
+
+/* Telas estreitas: o painel vai para baixo do tabuleiro */
+@media (max-width: 860px) {
+  .train-session {
+    flex-direction: column;
+    align-items: stretch;
+    height: auto;
+  }
+  .train-board-col {
+    height: auto;
+  }
+  .train-side {
+    width: 100%;
+    max-height: none;
+  }
+}

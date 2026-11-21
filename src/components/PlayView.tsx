@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import { Flag, Handshake, RotateCcw, Swords, Volume2, VolumeX } from "lucide-react";
+import { Flag, Handshake, Lightbulb, RotateCcw, Swords, Undo2, Volume2, VolumeX } from "lucide-react";
 import { api, errorText, nextSearchId, type Settings } from "../lib/api";
-import { CLASS_INFO, CLASS_ORDER, START_FEN, compactEval, resolveMoveRef, capturedInfo, fullmoveOf, makeMove, uciToMove, type MoveClass, type MoveNode } from "../lib/chess-utils";
-import { PERSONAS, TIME_CONTROLS, botFor, formatClock, thinkTimeMs, type Bot, type TimeControl } from "../lib/bots";
+import { CLASS_INFO, CLASS_ORDER, START_FEN, compactEval, resolveMoveRef, capturedInfo, fullmoveOf, makeMove, uciToMove, uciToSan, type MoveClass, type MoveNode } from "../lib/chess-utils";
+import { assessMove, newThreatAfterBotMove, type ThreatInfo, type TrainWarning } from "../lib/practice";
+import { ThreatReminder, TrainTag, TrainWarningCard } from "./practice/TrainCoach";
+import { MAX_LEVEL, MIN_LEVEL, PERSONAS, stockfishLevelText, TIME_CONTROLS, botFor, formatClock, thinkTimeMs, type Bot, type TimeControl } from "../lib/bots";
+import { opponentMove, opponentStart } from "../lib/opponent";
+import { LevelCoach } from "./LevelCoach";
+import { formatLevel } from "../lib/coaching-level";
 import { playMoveSound, sfx, setSoundEnabled, soundEnabled } from "../lib/sound";
 import { evaluateGame, evaluatePosition, formatEta, reviewLimitOf, summarizeFor, type PlayerSummary } from "../lib/review";
 import type { PositionEval } from "../lib/chess-utils";
@@ -40,6 +45,9 @@ interface Props {
   onOpenInAnalysis: (startFen: string, moves: MoveNode[], headers: Record<string, string>, opts?: OpenOpts) => void;
 }
 
+/** Limite das avaliações do modo treino: o aluno espera por elas, então são curtas. */
+const TRAIN_CHECK_LIMIT = { depth: 16, movetime: 900 };
+
 type Stage = "setup" | "playing" | "over";
 type ColorChoice = "w" | "b" | "random";
 
@@ -61,6 +69,12 @@ interface LiveGame {
   tc: TimeControl;
   startedAt: string;
   result: GameResult | null;
+  /** modo treino ligado nesta partida */
+  training: boolean;
+  /** contadores do modo treino (vão para o registro da partida) */
+  assist: { warnings: number; takebacks: number; hints: number };
+  /** sobe a cada lance voltado: cálculos do bot feitos antes disso são descartados */
+  version: number;
 }
 
 interface PostState {
@@ -76,12 +90,12 @@ interface PostState {
 
 const LS_KEY = "xequemente.play";
 
-function loadPrefs(): { level: number; tc: string; color: ColorChoice } {
+function loadPrefs(): { level: number; tc: string; color: ColorChoice; training: boolean } {
   try {
     const v = JSON.parse(localStorage.getItem(LS_KEY) ?? "{}");
-    return { level: v.level ?? 5, tc: v.tc ?? "5+0", color: v.color ?? "random" };
+    return { level: v.level ?? 5, tc: v.tc ?? "5+0", color: v.color ?? "random", training: !!v.training };
   } catch {
-    return { level: 5, tc: "5+0", color: "random" };
+    return { level: 5, tc: "5+0", color: "random", training: false };
   }
 }
 
@@ -139,6 +153,16 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
   const [confirmResign, setConfirmResign] = useState(false);
   const [sound, setSound] = useState(soundEnabled());
   const [post, setPost] = useState<PostState | null>(null);
+  const [training, setTraining] = useState(prefs.training);
+  /** aviso do treinador antes da resposta do bot (modo treino) */
+  const [warning, setWarning] = useState<TrainWarning | null>(null);
+  /** "checking": o treinador avalia o lance do aluno; "warning": aguardando a decisão do aluno */
+  const [trainStatus, setTrainStatus] = useState<"checking" | "warning" | null>(null);
+  /** ameaça criada pelo último lance do bot (lembrete "Antes de jogar") */
+  const [threat, setThreat] = useState<ThreatInfo | null>(null);
+  const [threatRevealed, setThreatRevealed] = useState(false);
+  /** dica do melhor lance, válida só para a posição em que foi pedida */
+  const [hint, setHint] = useState<{ fen: string; uci: string } | null>(null);
   const [, setTick] = useState(0);
   // espaço da coluna da barra de avaliação; barras dos jogadores
   const fit = useBoardFit(38, 112);
@@ -162,6 +186,43 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
   settingsRef.current = settings;
   const engineReadyRef = useRef(engineReady);
   engineReadyRef.current = engineReady;
+  // Fila do motor de análise: a pré-análise e a checagem do treino não rodam ao mesmo tempo.
+  const engineChain = useRef<Promise<unknown>>(Promise.resolve());
+  /** o treinador está avaliando ou aguardando o aluno: o bot não joga */
+  const trainGate = useRef(false);
+  /** lado cujo relógio foi pausado pelo treinador */
+  const pausedRef = useRef<"w" | "b" | null>(null);
+
+  const runEngine = useCallback(<T,>(job: () => Promise<T>): Promise<T> => {
+    const run = engineChain.current.then(job, job);
+    engineChain.current = run.catch(() => undefined);
+    return run;
+  }, []);
+
+  /** Pré-análise em andamento (para o treinador poder interrompê-la) e pedido de interrupção. */
+  const preInFlight = useRef(false);
+  const preAbort = useRef(false);
+  /** Avaliações rápidas do modo treino (ficam fora do preCache para não piorar a revisão final). */
+  const trainCache = useRef(new Map<string, PositionEval>());
+
+  /**
+   * Avaliação rápida para o modo treino: reaproveita a pré-análise quando ela já tem a posição;
+   * senão interrompe a pré-análise em andamento (que volta para a fila) e avalia com um limite curto.
+   */
+  const evalCached = useCallback(
+    async (fen: string): Promise<PositionEval | null> => {
+      const hit = preCache.current.get(fen) ?? trainCache.current.get(fen);
+      if (hit) return hit;
+      if (preInFlight.current) {
+        preAbort.current = true;
+        void api.engineStop().catch(() => {});
+      }
+      const ev = await runEngine(() => evaluatePosition(fen, TRAIN_CHECK_LIMIT));
+      if (ev) trainCache.current.set(fen, ev);
+      return ev;
+    },
+    [runEngine],
+  );
 
   const pumpPreAnalysis = useCallback(async () => {
     if (preBusy.current || !engineReadyRef.current) return;
@@ -172,9 +233,22 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
         if (!game || game.result) break;
         const fen = preQueue.current.shift()!;
         if (preCache.current.has(fen)) continue;
-        const ev = await evaluatePosition(fen, reviewLimitOf(settingsRef.current));
+        const ev = await runEngine(async () => {
+          preInFlight.current = true;
+          try {
+            return await evaluatePosition(fen, reviewLimitOf(settingsRef.current));
+          } finally {
+            preInFlight.current = false;
+          }
+        });
         // Se a partida acabou no meio, a busca pode ter sido interrompida: não guarda.
         if (gameRef.current !== game || game.result) break;
+        // O treinador interrompeu esta busca para avaliar o lance do aluno: o resultado é parcial, volta para a fila.
+        if (preAbort.current) {
+          preAbort.current = false;
+          preQueue.current.unshift(fen);
+          continue;
+        }
         if (ev) preCache.current.set(fen, ev);
       }
     } catch {
@@ -182,7 +256,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
     } finally {
       preBusy.current = false;
     }
-  }, []);
+  }, [runEngine]);
   const queuePreAnalysis = useCallback(
     (fen: string) => {
       preQueue.current.push(fen);
@@ -200,11 +274,11 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
 
   useEffect(() => {
     try {
-      localStorage.setItem(LS_KEY, JSON.stringify({ level, tc: tcId, color: colorChoice }));
+      localStorage.setItem(LS_KEY, JSON.stringify({ level, tc: tcId, color: colorChoice, training }));
     } catch {
       /* ignora */
     }
-  }, [level, tcId, colorChoice]);
+  }, [level, tcId, colorChoice, training]);
 
   const g = gameRef.current;
   const fen = g ? (g.moves.length ? g.moves[g.moves.length - 1].fenAfter : g.startFen) : START_FEN;
@@ -253,6 +327,12 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
         k.running = null;
       }
       game.result = result;
+      trainGate.current = false;
+      pausedRef.current = null;
+      setWarning(null);
+      setTrainStatus(null);
+      setThreat(null);
+      setHint(null);
       setPremove(null);
       setThinking(false);
       setStage("over");
@@ -326,6 +406,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
         accuracyAlgo: "lichess",
         digest: summary.moveDigest,
         chat: [],
+        ...(game.training ? { assisted: { ...game.assist } } : {}),
       };
       updateProfile((p) => ({ ...p, games: [record, ...p.games] }));
       setPost({ status: "done", done: 0, total: 0, summary, recordId: record.id, coach: null, coachError: null });
@@ -337,6 +418,133 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [engineReady, settings, rerender, runCoach, updateProfile],
   );
+  // ------------------------------------------------------------ modo treino
+
+  /** Pausa o relógio (o de quem está rodando) enquanto o treinador avalia ou espera o aluno. */
+  const pauseClock = useCallback(() => {
+    const k = clockRef.current;
+    if (!k.running) return;
+    k[k.running] = Math.max(0, k[k.running] - (performance.now() - k.since));
+    pausedRef.current = k.running;
+    k.running = null;
+  }, []);
+
+  const resumeClock = useCallback(() => {
+    const k = clockRef.current;
+    if (!pausedRef.current) return;
+    k.running = pausedRef.current;
+    k.since = performance.now();
+    pausedRef.current = null;
+  }, []);
+
+  /** Libera o bot: fecha o aviso (ou a checagem) e volta o relógio. */
+  const releaseTrain = useCallback(() => {
+    trainGate.current = false;
+    setWarning(null);
+    setTrainStatus(null);
+    resumeClock();
+    rerender();
+  }, [resumeClock, rerender]);
+
+  /** Depois do lance do aluno: avalia com o motor e, se o lance for ruim, pausa e avisa. */
+  const startTrainCheck = useCallback(
+    (game: LiveGame, m: MoveNode) => {
+      // Sem motor não há avaliação: o bot joga normalmente (o painel mostra que os avisos estão indisponíveis).
+      if (!engineReadyRef.current) return;
+      trainGate.current = true;
+      pauseClock();
+      setTrainStatus("checking");
+      const version = game.version;
+      void (async () => {
+        let warn: TrainWarning | null = null;
+        try {
+          const before = await evalCached(m.fenBefore);
+          const after = await evalCached(m.fenAfter);
+          warn = assessMove({ playerColor: game.playerColor, san: m.san, fenAfter: m.fenAfter, before, after });
+        } catch {
+          warn = null;
+        }
+        // A partida acabou ou o aluno voltou o lance no meio da checagem: não faz mais nada.
+        if (gameRef.current !== game || game.result || game.version !== version) return;
+        if (warn) {
+          game.assist.warnings++;
+          setWarning(warn);
+          setTrainStatus("warning");
+          rerender();
+        } else {
+          releaseTrain();
+        }
+      })();
+    },
+    [pauseClock, evalCached, releaseTrain, rerender],
+  );
+
+  /** Volta até o último lance do aluno (com a resposta do bot, se ela já saiu). */
+  const takeback = useCallback(() => {
+    const game = gameRef.current;
+    if (!game || game.result) return;
+    let i = -1;
+    for (let j = game.moves.length - 1; j >= 0; j--) {
+      if (game.moves[j].color === game.playerColor) {
+        i = j;
+        break;
+      }
+    }
+    if (i < 0) return;
+    const k = clockRef.current;
+    const now = performance.now();
+    if (k.running) {
+      k[k.running] = Math.max(0, k[k.running] - (now - k.since));
+      k.running = null;
+    }
+    if (game.tc.base > 0) {
+      // Cada cor volta ao relógio que tinha antes do primeiro lance removido dela.
+      for (const c of ["w", "b"] as const) {
+        const idx = game.moves.findIndex((m, j) => j >= i && m.color === c);
+        const before = idx >= 0 ? game.clockBefore[idx] : null;
+        if (before !== null && before !== undefined) k[c] = before;
+      }
+      k.running = game.playerColor;
+      k.since = now;
+    }
+    game.moves = game.moves.slice(0, i);
+    game.clockBefore = game.clockBefore.slice(0, i);
+    game.spent = game.spent.slice(0, i);
+    game.version++;
+    game.assist.takebacks++;
+    trainGate.current = false;
+    pausedRef.current = null;
+    setWarning(null);
+    setTrainStatus(null);
+    setHint(null);
+    setThreatRevealed(false);
+    const last = game.moves[game.moves.length - 1];
+    setThreat(last && last.color !== game.playerColor ? newThreatAfterBotMove(last.fenBefore, last.fenAfter, game.playerColor) : null);
+    rerender();
+  }, [rerender]);
+
+  /** Dica: o melhor lance segundo o motor, para a posição atual do aluno. */
+  async function giveHint() {
+    const game = gameRef.current;
+    if (!game || game.result || !game.training || !engineReadyRef.current || trainStatus) return;
+    const cur = game.moves.length ? game.moves[game.moves.length - 1].fenAfter : game.startFen;
+    if (cur.split(" ")[1] !== game.playerColor) return;
+    const version = game.version;
+    try {
+      const ev = await evalCached(cur);
+      if (gameRef.current !== game || game.result || game.version !== version) return;
+      if (!ev?.best) {
+        setNotice("Não consegui calcular uma dica agora.");
+        return;
+      }
+      game.assist.hints++;
+      setHint({ fen: cur, uci: ev.best });
+      rerender();
+    } catch (e) {
+      if (gameRef.current === game) setError(errorText(e));
+    }
+  }
+
   // ------------------------------------------------------------ lances
 
   const applyMove = useCallback(
@@ -359,10 +567,22 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       playMoveSound(m.san);
       rerender();
       const end = gameOutcome(game.startFen, game.moves);
-      if (end) void finish(end);
+      if (end) {
+        void finish(end);
+      } else if (game.training) {
+        if (m.color === game.playerColor) {
+          setThreat(null);
+          setThreatRevealed(false);
+          setHint(null);
+          startTrainCheck(game, m);
+        } else {
+          setThreat(newThreatAfterBotMove(m.fenBefore, m.fenAfter, game.playerColor));
+          setThreatRevealed(false);
+        }
+      }
       return true;
     },
-    [finish, remaining, rerender, queuePreAnalysis],
+    [finish, remaining, rerender, queuePreAnalysis, startTrainCheck],
   );
 
   const playerMove = useCallback(
@@ -380,11 +600,12 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
 
   const engineTurn = useCallback(async () => {
     const game = gameRef.current;
-    if (!game || game.result || busyRef.current) return;
+    if (!game || game.result || busyRef.current || trainGate.current) return;
     const cur = game.moves.length ? game.moves[game.moves.length - 1].fenAfter : game.startFen;
     const botColor = game.playerColor === "w" ? "b" : "w";
     if (cur.split(" ")[1] !== botColor) return;
     busyRef.current = true;
+    const version = game.version;
     setThinking(true);
     try {
       const chess = new Chess(cur);
@@ -399,20 +620,21 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
         level: game.bot.level,
       });
       const t0 = performance.now();
-      const res = await api.opponentMove(
-        nextSearchId(),
-        game.startFen,
-        game.moves.map((m) => m.uci),
-        cur,
-        Math.round(Math.max(30, Math.min(think * 0.85, 30_000))),
-      );
+      const res = await opponentMove(game.bot.level, {
+        id: nextSearchId(),
+        startFen: game.startFen,
+        moves: game.moves.map((m) => m.uci),
+        fen: cur,
+        movetime: Math.round(Math.max(30, Math.min(think * 0.85, 30_000))),
+      });
       // Espera o resto do "tempo humano", sem passar do fim da partida.
       let wait = think - (performance.now() - t0);
-      while (wait > 0 && gameRef.current === game && !game.result) {
+      while (wait > 0 && gameRef.current === game && !game.result && game.version === version) {
         await sleep(Math.min(wait, 100));
         wait = think - (performance.now() - t0);
       }
-      if (gameRef.current !== game || game.result) return;
+      // Se o aluno voltou um lance enquanto o bot pensava, a resposta antiga não vale mais.
+      if (gameRef.current !== game || game.result || game.version !== version) return;
 
       // Avaliação do ponto de vista do bot (para desistir ou aceitar empate).
       const line = res.lines[0];
@@ -458,6 +680,8 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
   const handlePremove = (p: Premove | null) => {
     const game = gameRef.current;
     if (!p) return setPremove(null);
+    // No modo treino não há pré-lances: cada lance passa pela avaliação do treinador.
+    if (game?.training) return;
     if (!game || game.result) return;
     const cur = game.moves.length ? game.moves[game.moves.length - 1].fenAfter : game.startFen;
     if (cur.split(" ")[1] === game.playerColor) {
@@ -514,7 +738,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
     setError(null);
     setNotice(null);
     try {
-      await api.opponentStart(level);
+      await opponentStart(level);
       const tc = TIME_CONTROLS.find((t) => t.id === tcId) ?? TIME_CONTROLS[4];
       let color: "w" | "b" =
         colorChoice === "random" ? (Math.random() < 0.5 ? "w" : "b") : colorChoice;
@@ -530,7 +754,17 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
         tc,
         startedAt: new Date().toISOString(),
         result: null,
+        training,
+        assist: { warnings: 0, takebacks: 0, hints: 0 },
+        version: 0,
       };
+      trainGate.current = false;
+      pausedRef.current = null;
+      setWarning(null);
+      setTrainStatus(null);
+      setThreat(null);
+      setThreatRevealed(false);
+      setHint(null);
       clockRef.current = { w: tc.base * 1000, b: tc.base * 1000, running: "w", since: performance.now() };
       botEvalRef.current = null;
       losingStreak.current = 0;
@@ -538,6 +772,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
       lastTickSecond.current = null;
       busyRef.current = false;
       preCache.current = new Map();
+      trainCache.current = new Map();
       preQueue.current = [];
       queuePreAnalysis(START_FEN);
       setPremove(null);
@@ -611,7 +846,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
     const c = new Chess(game.startFen);
     game.moves.forEach((m) => c.move({ from: m.from, to: m.to, promotion: m.promotion }));
     const lines = [
-      `Partida que o aluno acabou de jogar contra ${game.bot.name} (Stockfish nível ${game.bot.level}, ~${game.bot.elo} de Elo), modalidade ${game.tc.label}.`,
+      `Partida que o aluno acabou de jogar contra ${game.bot.name} (${stockfishLevelText(game.bot.level)}, ~${game.bot.elo} de Elo), modalidade ${game.tc.label}.`,
       `O aluno jogou de ${color}. Resultado: ${outcome}${res ? ` (${res.reason})` : ""}.`,
       openingContext(game.moves),
       `Lances: ${c.pgn().split("\n").filter((l) => !l.startsWith("[")).join(" ").trim()}`,
@@ -646,7 +881,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
               <div className="bot-title">
                 {bot.title} · ~{bot.elo} Elo
               </div>
-              <div className="bot-level">Nível {level} de 20</div>
+              <div className="bot-level">Nível {formatLevel(level)} de {MAX_LEVEL}</div>
             </div>
           </div>
           <div className="persona-strip">
@@ -657,7 +892,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
                   key={p.name}
                   className={`persona ${active ? "active" : ""}`}
                   title={`${p.name} · ${p.title} (níveis ${p.min === p.max ? p.min : `${p.min}–${p.max}`})`}
-                  onClick={() => setLevel(active ? level : p.min)}
+                  onClick={() => setLevel(active ? level : Math.max(0, p.min))}
                   style={{ background: p.color }}
                 >
                   <img src={p.avatar} alt={p.name} draggable={false} />
@@ -665,9 +900,9 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
               );
             })}
           </div>
-          <input type="range" min={0} max={20} value={level} onChange={(e) => setLevel(Number(e.target.value))} />
+          <input type="range" min={MIN_LEVEL} max={MAX_LEVEL} value={level} onChange={(e) => setLevel(Number(e.target.value))} />
           <div className="level-scale">
-            <span>0 · Iniciante</span>
+            <span>{formatLevel(MIN_LEVEL)} · Iniciante</span>
             <span>10</span>
             <span>20 · Máximo</span>
           </div>
@@ -676,6 +911,7 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
             adversário pensa como gente: rápido na abertura e em lances óbvios, demora nas posições difíceis e desiste quando está
             perdido.
           </p>
+          <LevelCoach profile={profile} level={level} tcId={tcId} onPickLevel={setLevel} onPickTc={setTcId} />
         </section>
 
         <section className="panel setup-options">
@@ -707,6 +943,13 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
               </button>
             ))}
           </div>
+          <label className="toggle small train-option">
+            <input type="checkbox" checked={training} onChange={(e) => setTraining(e.target.checked)} /> Modo treino
+          </label>
+          <div className="train-off-note">
+            O treinador avisa antes de um lance ruim, pergunta o que o último lance dele ameaça e libera dica e "Voltar lance". No modo treino não há pré-lances.
+          </div>
+          {training && !engineReady && <div className="notice">Avisos indisponíveis: o motor de análise está parado.</div>}
           {error && <div className="error">{error}</div>}
           {!engineReady && <div className="notice">O motor de análise está parado: a partida funciona, mas a revisão no final precisa dele.</div>}
           <button className="btn-primary big play-btn" disabled={starting || !settings.enginePath} onClick={() => start()}>
@@ -726,6 +969,12 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
   const last = g.moves[g.moves.length - 1];
   const r = g.result;
   const won = r ? r.winner === g.playerColor : false;
+  const hintNow = hint && hint.fen === fen && !r ? hint : null;
+  const threatNow = g.training && !r && turn === g.playerColor ? threat : null;
+  const threatSquares = trainStatus === "warning" && warning ? warning.squares : threatNow && threatRevealed ? threatNow.squares : undefined;
+  const hintSquares = hintNow ? [hintNow.uci.slice(0, 2), hintNow.uci.slice(2, 4)] : undefined;
+  const canHint = !r && g.training && engineReady && !trainStatus && turn === g.playerColor;
+  const canTakeback = !r && g.training && g.moves.some((m) => m.color === g.playerColor);
 
   const rows: { n: number; w?: MoveNode; b?: MoveNode }[] = [];
   g.moves.forEach((m) => {
@@ -767,6 +1016,8 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
             premove={premove}
             onMove={playerMove}
             onPremove={handlePremove}
+            threatSquares={threatSquares}
+            hintSquares={hintSquares}
           />
         </div>
         <div className="player-bar">
@@ -789,9 +1040,10 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
           <div>
             <div className="bot-name small-name">{g.bot.name}</div>
             <div className="bot-title">
-              Nível {g.bot.level} · {g.tc.label}
+              Nível {formatLevel(g.bot.level)} · {g.tc.label}
             </div>
           </div>
+          {g.training && <TrainTag />}
           <span className="spacer" />
           <button
             className="btn-2 icon-btn"
@@ -808,7 +1060,13 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
         <div className="panel-scroll">
           {!r && (
             <div className={`turn-banner ${turn === g.playerColor ? "mine" : ""}`}>
-              {turn === g.playerColor ? "Sua vez" : `${g.bot.name} está pensando…`}
+              {turn === g.playerColor
+                ? "Sua vez"
+                : trainStatus === "warning"
+                  ? "Aguardando sua decisão"
+                  : trainStatus === "checking"
+                    ? "Treinador analisando o lance…"
+                    : `${g.bot.name} está pensando…`}
               {premove && (
                 <span className="premove-info">
                   Pré-lance {premove.from}→{premove.to} · botão direito cancela
@@ -818,6 +1076,16 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
           )}
           {notice && <div className="notice">{notice}</div>}
           {error && <div className="error">{error}</div>}
+          {!r && g.training && !engineReady && <div className="notice">Avisos indisponíveis: o motor de análise está parado.</div>}
+          {!r && trainStatus === "warning" && warning && (
+            <TrainWarningCard warning={warning} onTakeback={takeback} onContinue={releaseTrain} />
+          )}
+          {threatNow && <ThreatReminder threat={threatNow} revealed={threatRevealed} onReveal={() => setThreatRevealed(true)} />}
+          {hintNow && (
+            <div className="notice">
+              Dica do treinador: <span className="mono">{uciToSan(hintNow.fen, hintNow.uci)}</span> (destacado no tabuleiro).
+            </div>
+          )}
 
           {r && (
             <div className={`result-card ${r.winner === null ? "draw" : won ? "win" : "loss"}`}>
@@ -939,14 +1207,26 @@ export function PlayView({ settings, engineReady, profile, updateProfile, onOpen
 
         <div className="panel-footer">
           {!r ? (
-            <div className="row-buttons equal">
-              <button className="btn-2 labeled" onClick={offerDraw} disabled={drawCooldown.current > 0 || g.moves.length < 2}>
-                <Handshake size={16} strokeWidth={2.6} /> Empate
-              </button>
-              <button className={`btn-2 labeled ${confirmResign ? "danger" : ""}`} onClick={resign}>
-                <Flag size={16} strokeWidth={2.6} /> {confirmResign ? "Confirmar?" : "Desistir"}
-              </button>
-            </div>
+            <>
+              {g.training && (
+                <div className="row-buttons equal">
+                  <button className="btn-2 labeled" onClick={() => void giveHint()} disabled={!canHint}>
+                    <Lightbulb size={16} strokeWidth={2.6} /> Dica
+                  </button>
+                  <button className="btn-2 labeled" onClick={takeback} disabled={!canTakeback}>
+                    <Undo2 size={16} strokeWidth={2.6} /> Voltar lance
+                  </button>
+                </div>
+              )}
+              <div className="row-buttons equal">
+                <button className="btn-2 labeled" onClick={offerDraw} disabled={drawCooldown.current > 0 || g.moves.length < 2}>
+                  <Handshake size={16} strokeWidth={2.6} /> Empate
+                </button>
+                <button className={`btn-2 labeled ${confirmResign ? "danger" : ""}`} onClick={resign}>
+                  <Flag size={16} strokeWidth={2.6} /> {confirmResign ? "Confirmar?" : "Desistir"}
+                </button>
+              </div>
+            </>
           ) : (
             <>
               <button className="btn-primary big" onClick={() => start({ swapColor: true })} disabled={starting}>

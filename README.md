@@ -47,6 +47,12 @@ Requisitos: Node.js 20+, Rust (stable) e as ferramentas de build do Visual Studi
 - **Pré-lance:** mova suas peças durante o tempo do adversário; o lance sai na hora se for legal. Botão direito cancela.
 - **Pós-jogo:** revisão automática com o motor de análise, classificação dos seus erros (fase, apuro de tempo, tática perdida, material deixado, mate permitido…) e relatório do treinador (IA) com o que foi bem, onde errou e a lição de cada erro. O treinador também **fala** um resumo curto do relatório (voz do Gemini, ou do Windows sem a chave do Gemini).
 
+## Treino
+
+- **Treinar meus erros:** cada erro das suas partidas vira um exercício (a posição de antes do erro), corrigido pelo motor e repetido em intervalos crescentes até você dominar.
+- **Modo treino:** na tela Jogar, o treinador avisa antes de um lance que entrega peça, lembra de olhar as ameaças do adversário e libera dica e voltar lance.
+- **Adversário que se ajusta e metas da semana:** níveis abaixo de 0 para quem está começando, sugestão de nível pelos seus resultados e metas semanais medidas automaticamente no Perfil.
+
 ## Perfil e memória do treinador
 
 - O histórico fica em `%APPDATA%\com.xequemente.app\profile.json`.

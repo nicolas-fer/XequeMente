@@ -8,6 +8,13 @@ import otavio from "../assets/avatars/otavio.webp";
 import sombra from "../assets/avatars/sombra.webp";
 import stockfish from "../assets/avatars/stockfish.webp";
 
+/**
+ * Faixa de níveis do adversário na tela Jogar. Abaixo de 0 o Stockfish não tem Skill Level:
+ * o bot usa o nível 0 e erra de propósito (ver lib/opponent.ts).
+ */
+export const MIN_LEVEL = -5;
+export const MAX_LEVEL = 20;
+
 export interface Bot {
   level: number;
   name: string;
@@ -18,7 +25,7 @@ export interface Bot {
 }
 
 export const PERSONAS: { min: number; max: number; name: string; title: string; color: string; avatar: string }[] = [
-  { min: 0, max: 2, name: "Tico", title: "Iniciante", color: "#7fb3d5", avatar: tico },
+  { min: MIN_LEVEL, max: 2, name: "Tico", title: "Iniciante", color: "#7fb3d5", avatar: tico },
   { min: 3, max: 5, name: "Bia", title: "Aprendiz", color: "#82c99b", avatar: bia },
   { min: 6, max: 8, name: "Rafa", title: "Jogador de clube", color: "#e5b55a", avatar: rafa },
   { min: 9, max: 11, name: "Dona Lúcia", title: "Experiente", color: "#d98c6b", avatar: lucia },
@@ -31,10 +38,17 @@ export const PERSONAS: { min: number; max: number; name: string; title: string; 
 /**
  * Elo aproximado de cada Skill Level, pela fórmula que o próprio Stockfish usa para
  * converter UCI_Elo em nível (Elo ≈ 1346,6 + 143,4 · nível^0,806). Nível 20 não tem limite.
+ * Níveis negativos são só estimativa: cada nível abaixo de 0 tira ~100 de Elo a partir de ~1350.
  */
+/** Nível descrito para o treinador (IA): níveis negativos são o nível 0 errando de propósito. */
+export function stockfishLevelText(level: number): string {
+  return level < 0 ? `nível ${level}, abaixo do mínimo do Stockfish: joga no nível 0 e às vezes escolhe um lance pior de propósito` : `Stockfish nível ${level}`;
+}
+
 export function eloForLevel(level: number): number {
   if (level >= 20) return 3200;
-  return Math.round((1346.6 + 143.4 * Math.pow(Math.max(0, level), 0.806)) / 10) * 10;
+  if (level < 0) return Math.max(100, Math.round((1350 + 100 * level) / 10) * 10);
+  return Math.round((1346.6 + 143.4 * Math.pow(level, 0.806)) / 10) * 10;
 }
 
 export function botFor(level: number): Bot {

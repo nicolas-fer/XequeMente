@@ -1,0 +1,209 @@
+/* Adversário que se ajusta (LevelCoach) e metas semanais (aba Perfil). Usa as variáveis do tema de App.css. */
+
+.coach-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 0.92rem;
+}
+
+.coach-card.coach-welcome {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border-left-color: var(--green);
+}
+
+.coach-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.coach-text {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 260px;
+}
+
+.coach-text svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--gold);
+}
+
+.coach-quiet {
+  padding: 2px 0;
+}
+
+/* ---------------------------------------------------------------- Metas da semana */
+
+.coach-goals-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.coach-streak {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.goal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.goal-row .goal-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+  margin-bottom: 4px;
+}
+
+.goal-value {
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+.goal-row.met .goal-value {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.goal-bar > div {
+  background: var(--green);
+}
+
+.goal-trend {
+  margin-top: 2px;
+}
+
+.plan-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+
+.plan-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.plan-check:hover {
+  background: var(--surface-2);
+}
+
+.plan-check.done span strong {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.plan-check input {
+  margin-top: 3px;
+  accent-color: var(--green);
+}
+
+.coach-history {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.coach-weeks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.coach-week {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 0.85rem;
+}
+
+.coach-week-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--line);
+}
+
+.coach-week.done .coach-week-dot {
+  background: var(--green);
+}
+
+.coach-week.partial .coach-week-dot {
+  background: var(--gold);
+}
+
+.coach-week.done {
+  border-color: var(--green);
+}
+
+.coach-week-label {
+  font-weight: 600;
+}
+
+.coach-goals-edit {
+  margin-top: 14px;
+}
+
+.coach-goals-edit summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.coach-goal-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.coach-goal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+}
+
+.coach-goal-field input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}

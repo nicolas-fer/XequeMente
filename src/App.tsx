@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
 import { preloadSounds } from "./lib/sound";
-import { Download, History, LayoutGrid, Search, Settings as SettingsIcon, Swords, UserRound, type LucideIcon } from "lucide-react";
+import { Download, History, LayoutGrid, Search, Settings as SettingsIcon, Swords, Target, UserRound, type LucideIcon } from "lucide-react";
 import { api, errorText, type EngineInfo, type Settings } from "./lib/api";
 import { useGame } from "./lib/useGame";
 import type { MoveNode } from "./lib/chess-utils";
@@ -13,15 +13,17 @@ import { SettingsView } from "./components/SettingsView";
 import { PlayView } from "./components/PlayView";
 import { ProfileView } from "./components/ProfileView";
 import { HistoryView } from "./components/HistoryView";
+import { TrainView } from "./components/TrainView";
 import type { OpenOpts } from "./lib/useGame";
 import { EMPTY_PROFILE, loadProfile, saveProfile, withCurrentAccuracy, type ProfileData } from "./lib/profile";
 import logo from "./assets/brand/logo.png";
 import "./App.css";
 
-type Tab = "jogar" | "partidas" | "analise" | "editor" | "importar" | "perfil" | "config";
+type Tab = "jogar" | "treinar" | "partidas" | "analise" | "editor" | "importar" | "perfil" | "config";
 
 const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "jogar", label: "Jogar", icon: Swords },
+  { id: "treinar", label: "Treinar", icon: Target },
   { id: "partidas", label: "Partidas", icon: History },
   { id: "analise", label: "Análise", icon: Search },
   { id: "editor", label: "Editor", icon: LayoutGrid },
@@ -146,6 +148,16 @@ export default function App() {
             profile={profile}
             updateProfile={updateProfile}
             onOpenInAnalysis={openInAnalysis}
+          />
+        </div>
+        <div className={tab === "treinar" ? "view" : "view hidden"}>
+          <TrainView
+            settings={settings}
+            engineReady={!!engine}
+            profile={profile}
+            updateProfile={updateProfile}
+            active={tab === "treinar"}
+            onOpenGame={openHistory}
           />
         </div>
         <div className={tab === "partidas" ? "view" : "view hidden"}>

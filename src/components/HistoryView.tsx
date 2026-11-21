@@ -23,6 +23,7 @@ import {
 } from "../lib/profile";
 import type { OpenOpts } from "../lib/useGame";
 import { CoachBubble, TutorChat, linkMoves } from "./TutorChat";
+import { TrainTag } from "./practice/TrainCoach";
 
 interface Props {
   settings: Settings;
@@ -368,6 +369,12 @@ export function HistoryView({ settings, profile, updateProfile, selectedId, onSe
                     <span className="muted small">
                       {new Date(g.date).toLocaleDateString("pt-BR")} · {g.accuracy !== null ? `${g.accuracy.toFixed(0)}%` : "—"}
                       {g.chat?.length ? " · com conversa" : ""}
+                      {g.assisted && (
+                        <>
+                          {" "}
+                          <TrainTag />
+                        </>
+                      )}
                     </span>
                   </span>
                 </button>

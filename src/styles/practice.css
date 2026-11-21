@@ -1,0 +1,58 @@
+/* Modo treino: selo, aviso do treinador e lembrete de ameaça. */
+
+.train-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--green-dark);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.train-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.train-card.warning {
+  border-color: var(--bad);
+}
+
+.train-card .coach-row {
+  margin: 0;
+}
+
+.train-question {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.train-reveal {
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.train-card .row-buttons {
+  margin: 0;
+}
+
+.train-off-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.train-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}

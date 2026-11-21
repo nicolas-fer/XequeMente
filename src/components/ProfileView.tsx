@@ -15,6 +15,7 @@ import {
   type ProfileData,
 } from "../lib/profile";
 import { CoachBubble } from "./TutorChat";
+import { WeeklyGoals } from "./coaching/WeeklyGoals";
 
 interface Props {
   settings: Settings;
@@ -274,6 +275,8 @@ export function ProfileView({ settings, profile, updateProfile, onOpenGame }: Pr
           </div>
         </div>
       </section>
+
+      <WeeklyGoals profile={profile} updateProfile={updateProfile} />
 
       <div className="profile-grid">
         <section className="panel">

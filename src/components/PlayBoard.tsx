@@ -18,11 +18,15 @@ interface Props {
   premove: Premove | null;
   onMove: (from: string, to: string, promotion?: string) => boolean;
   onPremove: (p: Premove | null) => void;
+  /** casas de ameaça do bot (modo treino) */
+  threatSquares?: string[];
+  /** casas da dica do melhor lance (modo treino) */
+  hintSquares?: string[];
 }
 
 const GLYPH: Record<string, [string, string]> = { q: ["♕", "♛"], r: ["♖", "♜"], b: ["♗", "♝"], n: ["♘", "♞"] };
 
-export function PlayBoard({ fen, playerColor, active, lastMove, premove, onMove, onPremove }: Props) {
+export function PlayBoard({ fen, playerColor, active, lastMove, premove, onMove, onPremove, threatSquares, hintSquares }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [promo, setPromo] = useState<{ from: string; to: string } | null>(null);
   const [dragFrom, setDragFrom] = useState<string | null>(null);
@@ -78,6 +82,8 @@ export function PlayBoard({ fen, playerColor, active, lastMove, premove, onMove,
   }
   const check = squareOfKingInCheck(fen);
   if (check) styles[check] = { background: "radial-gradient(circle, rgba(235,87,87,0.9) 0%, rgba(235,87,87,0.35) 55%, transparent 75%)" };
+  for (const s of threatSquares ?? []) styles[s] = { background: "rgba(214, 79, 64, 0.6)" };
+  for (const s of hintSquares ?? []) styles[s] = { background: "rgba(80, 150, 230, 0.6)" };
   if (premove) {
     styles[premove.from] = { background: "rgba(214, 79, 64, 0.65)" };
     styles[premove.to] = { background: "rgba(214, 79, 64, 0.8)" };

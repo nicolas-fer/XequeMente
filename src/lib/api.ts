@@ -119,8 +119,8 @@ export const api = {
   imageToBoard: (imageBase64: string, mediaType: string) =>
     invoke<BoardRead>("image_to_board", { imageBase64, mediaType }),
   opponentStart: (skill: number) => invoke<EngineInfo>("opponent_start", { skill }),
-  opponentMove: (id: number, startFen: string, moves: string[], fen: string, movetime: number) =>
-    invoke<SearchResult>("opponent_move", { id, startFen, moves, fen, movetime }),
+  opponentMove: (id: number, startFen: string, moves: string[], fen: string, movetime: number, multipv?: number) =>
+    invoke<SearchResult>("opponent_move", { id, startFen, moves, fen, movetime, multipv: multipv ?? null }),
   opponentStop: () => invoke<void>("opponent_stop"),
   profileGet: () => invoke<unknown>("profile_get"),
   profilePut: (data: unknown) => invoke<void>("profile_put", { data }),

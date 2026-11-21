@@ -6,6 +6,15 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 
 ## [Não lançado]
 
+## [0.7.0] - 2026-11-21
+
+### Adicionado
+- **Aba Treinar ("Treinar meus erros")**: cada erro das suas partidas vira um exercício. Você vê a posição de antes do erro e tenta achar o lance certo; o motor corrige (outro lance que perde pouco também vale) e, se errar, mostra a solução, a resposta do adversário ao seu lance e a lição que o treinador deu no relatório. Tem dica em dois níveis (a peça a mover, depois o tema) e link para a partida de origem.
+- Repetição espaçada: acertou de primeira, o exercício volta em 3, 7, 16 e 35 dias; errou, volta para o começo e reaparece na mesma sessão. Até 10 exercícios novos por dia, com contador de dominados e de dias seguidos.
+- **Modo treino** na tela Jogar: antes de o adversário responder, o treinador avisa quando o seu lance entrega peça ou perde muito ("Cuidado! Depois de Ba6, o cavalo em b8 pode tomar seu bispo em a6"), com **Voltar o lance** ou **Jogar assim mesmo**; os relógios param durante o aviso. Ele também lembra de olhar a ameaça quando o lance do adversário cria uma ameaça séria (mate ou peça de valor atacada), e libera dica e voltar lance. Essas partidas ganham o selo "Modo treino" na lista.
+- **Adversário que se ajusta**: níveis −1 a −5, abaixo do mínimo do Stockfish (o bot joga no nível 0 e às vezes escolhe de propósito um lance um pouco pior), e uma sugestão do treinador na tela Jogar com o nível ideal para você vencer cerca de metade das partidas, além de sugerir partidas mais lentas para aprender.
+- **Metas da semana** no Perfil: exercícios feitos, partidas jogadas, partidas em ritmo Rápida/Clássica e a sua fraqueza principal (peças deixadas atacadas por partida) comparada às semanas anteriores; os itens do plano de treino do treinador viram uma lista para marcar. Metas ajustáveis e histórico das últimas semanas.
+
 ## [0.6.1] - 2026-11-20
 
 ### Alterado
@@ -123,7 +132,8 @@ Primeira versão.
 - **Configuração completa do Stockfish**: download do executável oficial, threads, hash, limites da análise ao vivo, critério da revisão e todas as opções UCI anunciadas pelo motor.
 - Instaladores para Windows (NSIS e MSI).
 
-[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.6.1...HEAD
+[Não lançado]: https://github.com/nicolas-fer/XequeMente/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/nicolas-fer/XequeMente/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/nicolas-fer/XequeMente/compare/v0.5.1...v0.5.2
